@@ -628,10 +628,11 @@ struct GachaCutInR3SkillCutIn
 	LPVOID _se; // 0x40
 };
 
-struct ObjectTree 
+struct ObjectTree
 {
 	string name;
 	void* gameObj;
+	int instanceID;
 	vector<void*> children;
 	bool activeSelf;
 	bool activeInHierarchy;
@@ -809,7 +810,7 @@ namespace
 		return ret;
 
 	}
-	
+
 	void* activeSelf_orig = nullptr;
 
 	bool activeSelf_hook(void* _this)
@@ -832,7 +833,40 @@ namespace
 
 	}
 
-	
+	void* position_orig = nullptr;
+
+	Vector3 position_hook(void* _this)
+	{
+
+		Vector3 ret = reinterpret_cast<decltype(position_hook)*>(position_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* obj_inst_orig = nullptr;
+
+	int obj_inst_hook(void* _this)
+	{
+
+		int ret = reinterpret_cast<decltype(obj_inst_hook)*>(obj_inst_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* inst_obj_orig = nullptr;
+
+	void* inst_obj_hook(int instanceID)
+	{
+
+		void* ret = reinterpret_cast<decltype(inst_obj_hook)*>(inst_obj_orig)(instanceID);
+
+		return ret;
+
+	}
+
+
 
 
 	//
@@ -1757,7 +1791,7 @@ namespace
 		return;
 
 	}
-	
+
 	float g_aspect_ratio = 16.f / 9.f;
 
 	Resolution_t* (*get_resolution)(Resolution_t* buffer);
@@ -1816,8 +1850,8 @@ namespace
 			il2cpp_thread_detach(tr);
 			}).detach();
 	}
-	
-	
+
+
 	void* getlist_orig = nullptr;
 
 	int getlist_hook(void* _this)
@@ -1927,7 +1961,7 @@ namespace
 
 	int last_height = 0, last_width = 0;
 
-	
+
 	void* wnd_orig = nullptr;
 
 	LRESULT wnd_hook(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -2004,16 +2038,7 @@ namespace
 
 	}
 
-	void* transform_orig = nullptr;
-
-	Vector3 transform_hook(void* _this)
-	{
-
-		Vector3 ret = reinterpret_cast<decltype(transform_hook)*>(transform_orig)(_this);
-
-		return ret;
-
-	}
+	
 
 	void* index_orig = nullptr;
 
@@ -2077,7 +2102,7 @@ namespace
 			src, dst, compressedSize, dstCapacity);
 		printf("Start\n");
 
-		
+
 
 		//解包代码更改
 		std::vector<char> buffer(dst, dst + ret);
@@ -2141,7 +2166,7 @@ namespace
 
 		std::string data(dst, ret);
 		responses::print_response_additional_info(data);
-		
+
 
 		printf("Return!\n");
 
@@ -2157,16 +2182,16 @@ namespace
 		int dstCapacity)
 	{
 		//解包代码更改
-		std::vector<char> buffer(src+170, src+srcSize);
+		std::vector<char> buffer(src + 170, src + srcSize);
 		ojson s = msgpack::decode_msgpack<ojson>(buffer);
 		std::ostringstream os;
 		os << pretty_print(s);
-		njson j = njson::parse(os.str());	
+		njson j = njson::parse(os.str());
 
 		if (j.contains("live_theater_save_info")) {
 			for (int i = 0; i < j["live_theater_save_info"]["member_info_array"].size(); i++) {
 				j["live_theater_save_info"]["member_info_array"][i]["chara_id"] = 0;
-				j["live_theater_save_info"]["member_info_array"][i]["mob_id"] = 8590+i;
+				j["live_theater_save_info"]["member_info_array"][i]["mob_id"] = 8590 + i;
 				j["live_theater_save_info"]["member_info_array"][i]["dress_id"] = 7;
 			}
 			//封包代码更改
@@ -2175,8 +2200,8 @@ namespace
 			msgpack::encode_msgpack(tmp, new_buffer);
 
 			char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
-			memset(src+170, 0, srcSize-170);
-			memcpy(src+170, new_src, new_buffer.size());
+			memset(src + 170, 0, srcSize - 170);
+			memcpy(src + 170, new_src, new_buffer.size());
 
 			srcSize = new_buffer.size() + 170;
 
@@ -2186,10 +2211,10 @@ namespace
 			src, dst, srcSize, dstCapacity);
 
 		auto out_path = std::string("CarrotJuicer\\").append(current_time()).append("Q.msgpack");
-		write_file(out_path, src+170, srcSize-170);
+		write_file(out_path, src + 170, srcSize - 170);
 		//printf("wrote request to %s\n", out_path.c_str());
 
-		
+
 
 		return ret;
 	}
@@ -2253,7 +2278,7 @@ namespace
 			"umamusume.dll", "Gallop",
 			"RaceResultCutInHelper", "LoadBodyMotion", 6
 		);
-		
+
 		printf("race_addr at %p\n", race_addr);
 
 		MH_CreateHook((LPVOID)race_addr, race_hook, &race_orig);
@@ -2270,7 +2295,7 @@ namespace
 		MH_CreateHook((LPVOID)cutin_addr, cutin_hook, &cutin_orig);
 		MH_EnableHook((LPVOID)cutin_addr);
 
-		
+
 
 		auto camera_addr = il2cpp_symbols::get_method_pointer(
 			"umamusume.dll", "Gallop",
@@ -2475,7 +2500,7 @@ namespace
 
 		MH_CreateHook((LPVOID)gachachara_addr, gachachara_hook, &gachachara_orig);
 		MH_EnableHook((LPVOID)gachachara_addr);
-		
+
 		auto holder_addr = il2cpp_symbols::get_method_pointer(
 			"umamusume.dll", "Gallop",
 			"GachaCharaHolder", "CreateAdd", 8
@@ -2573,7 +2598,7 @@ namespace
 			"umamusume.dll", "Gallop",
 			"ModelController", "SetCySpringRate", 1
 		);
-		
+
 		printf("spring_addr at %p\n", spring_addr);
 
 		MH_CreateHook((LPVOID)spring_addr, spring_hook, &spring_orig);
@@ -2614,8 +2639,8 @@ namespace
 		*/
 		//adjust_size();
 
-		
-		
+
+
 		/*
 		auto get_virt_size_addr = il2cpp_symbols::get_method_pointer(
 			"umamusume.dll", "Gallop",
@@ -2656,8 +2681,8 @@ namespace
 
 		MH_CreateHook((LPVOID)gallop_get_screenwidth_addr, gallop_get_screenwidth_hook, &gallop_get_screenwidth_orig);
 		MH_EnableHook((LPVOID)gallop_get_screenwidth_addr);
-		
-		
+
+
 		*/
 		/*
 		auto ratio_addr = il2cpp_symbols::get_method_pointer(
@@ -2709,15 +2734,6 @@ namespace
 		MH_CreateHook((LPVOID)liveik_addr, liveik_hook, &liveik_orig);
 		MH_EnableHook((LPVOID)liveik_addr);
 
-		auto transform_addr = il2cpp_symbols::get_method_pointer(
-			"UnityEngine.CoreModule.dll", "UnityEngine",
-			"Transform", "get_position", 0
-		);
-
-		printf("transform_addr at %p\n", transform_addr);
-
-		MH_CreateHook((LPVOID)transform_addr, transform_hook, &transform_orig);
-		MH_EnableHook((LPVOID)transform_addr);
 
 		auto index_addr = il2cpp_symbols::get_method_pointer(
 			"umamusume.dll", "Gallop.Live",
@@ -2944,6 +2960,39 @@ namespace
 		MH_CreateHook((LPVOID)setActive_addr, setActive_hook, &setActive_orig);
 		MH_EnableHook((LPVOID)setActive_addr);
 
+		//从Transform获取本地Position
+		auto position_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_localPosition", 0
+		);
+
+		printf("position_addr at %p\n", position_addr);
+
+		MH_CreateHook((LPVOID)position_addr, position_hook, &position_orig);
+		MH_EnableHook((LPVOID)position_addr);
+
+		//从Object获取Instance
+		auto obj_inst_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Object", "GetInstanceID", 0
+		);
+
+		printf("obj_inst_addr at %p\n", obj_inst_addr);
+
+		MH_CreateHook((LPVOID)obj_inst_addr, obj_inst_hook, &obj_inst_orig);
+		MH_EnableHook((LPVOID)obj_inst_addr);
+
+		//从Instance获取Object
+		auto inst_obj_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Object", "FindObjectFromInstanceID", 1
+		);
+
+		printf("inst_obj_addr at %p\n", inst_obj_addr);
+
+		MH_CreateHook((LPVOID)inst_obj_addr, inst_obj_hook, &inst_obj_orig);
+		MH_EnableHook((LPVOID)inst_obj_addr);
+
 
 		//执行GUI程序
 		thread([]() {
@@ -2954,7 +3003,7 @@ namespace
 
 			il2cpp_thread_detach(tr);
 			}).detach();
-		
+
 
 	}
 
@@ -2981,6 +3030,8 @@ namespace
 
 static flat_hash_map<void*, ObjectTree> ObjDic;
 static vector<void*> rootObjList;
+static bool show_info_window = false;
+static void* selected_obj = 0;
 
 void refreashObject() {
 	ObjDic = {};
@@ -3003,6 +3054,7 @@ void refreashObject() {
 		ObjectTree node;
 		node.name = UmaGetString(objectname_hook(Obj));
 		node.gameObj = gameObj;
+		node.instanceID = obj_inst_hook(Obj);
 		node.children = children;
 		node.activeSelf = activeSelf_hook(gameObj);
 		node.activeInHierarchy = hierarchyActive_hook(gameObj);
@@ -3052,9 +3104,9 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 	bool activeInHierarchy = currentNode->activeInHierarchy;
 	void* gameObj = currentNode->gameObj;
 
-	ImGui::Checkbox(("##"+currentNode->name).c_str(), &activeSelf);
+	ImGui::Checkbox(("##" + currentNode->name).c_str(), &activeSelf);
 	ImGui::SameLine();
-	
+
 	if (activeSelf != currentNode->activeSelf) {
 		printf("Something is Change! The Value is %d\n", activeSelf);
 		setActive_hook(gameObj, activeSelf);
@@ -3062,11 +3114,15 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 		refreashObject();
 		return;
 	}
-	
+
 	if (currentNode->children.size() != 0) {
 		if (!activeInHierarchy) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		bool node_open = ImGui::TreeNodeEx(currentObj, node_flags, currentNode->name.c_str());
 		if (!activeInHierarchy) ImGui::PopStyleColor();
+		if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+			show_info_window = 1;
+			selected_obj = currentObj;
+		}
 		if (node_open)
 		{
 			for (int index = 0; index < currentNode->children.size(); index++) {
@@ -3074,11 +3130,16 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 			}
 			ImGui::TreePop();
 		}
-	}else {
+	}
+	else {
 		node_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen; // ImGuiTreeNodeFlags_Bullet
 		if (!activeInHierarchy) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		ImGui::TreeNodeEx(currentObj, node_flags, currentNode->name.c_str());
 		if (!activeInHierarchy) ImGui::PopStyleColor();
+		if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+			show_info_window = 1;
+			selected_obj = currentObj;
+		}
 	}
 };
 
@@ -3155,7 +3216,7 @@ int imguiwindow()
 
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-	
+
 
 	// Main loop
 	bool done = false;
@@ -3203,7 +3264,7 @@ int imguiwindow()
 				refreashObject();
 			}
 
-			
+
 
 			ImGui::SameLine();
 			ImGui::Text("counter = %d", counter);
@@ -3222,13 +3283,13 @@ int imguiwindow()
 			ImGui::End();
 		}
 
-		if (show_obj_window) 
+		if (show_obj_window)
 		{
 			ImGui::Begin("Obj Window", &show_obj_window);
-			
+
 			//建立树状结构
 			static ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
-			
+
 			for (int i = 0; i < rootObjList.size(); i++)
 			{
 
@@ -3254,8 +3315,25 @@ int imguiwindow()
 				*/
 			}
 
+			
 			ImGui::End();
 		}
+
+		if (show_info_window) {
+			if (inst_obj_hook(ObjDic[selected_obj].instanceID) == selected_obj) {
+				ImGui::Begin("Info Window", &show_info_window);
+				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str());
+				Vector3 V_pos = position_hook(selected_obj);
+				float position[] = { V_pos.x, V_pos.y, V_pos.z };
+				ImGui::InputFloat3("Position", position, "%.5f", ImGuiInputTextFlags_ReadOnly);
+				ImGui::End();
+			}
+			else {
+				show_info_window = false;
+				refreashObject();
+			}
+		}
+
 
 		// Rendering
 		ImGui::Render();
@@ -3465,14 +3543,14 @@ int usewindow() {
 		320,
 		0,
 		0,
-		hIns,   
+		hIns,
 		0
 	);
 
 	UpdateWindow(hWnd);
 	ShowWindow(hWnd, SW_SHOW);
 
-	
+
 	MSG msg = { 0 };
 	while (true)
 	{
@@ -3482,7 +3560,7 @@ int usewindow() {
 		{
 			break;
 		}
-		
+
 		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 			TranslateMessage(&msg);
 			DispatchMessage((&msg));
