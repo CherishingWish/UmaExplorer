@@ -20,4 +20,4 @@ Please make sure that you have installed the latest Visual C++ 2019 Redistributa
 
 ## Credits
 
-This module is largely copied form [EXNOA-CarrotJuicer](https://github.com/CNA-Bld/EXNOA-CarrotJuicer).
+This module is largely copied from [EXNOA-CarrotJuicer](https://github.com/CNA-Bld/EXNOA-CarrotJuicer).
