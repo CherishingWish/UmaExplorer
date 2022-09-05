@@ -631,7 +631,9 @@ struct GachaCutInR3SkillCutIn
 struct ObjectTree 
 {
 	string name;
+	void* gameObj;
 	vector<void*> children;
+	bool activeSelf;
 	bool activeInHierarchy;
 };
 
@@ -805,6 +807,28 @@ namespace
 		bool ret = reinterpret_cast<decltype(hierarchyActive_hook)*>(hierarchyActive_orig)(_this);
 
 		return ret;
+
+	}
+	
+	void* activeSelf_orig = nullptr;
+
+	bool activeSelf_hook(void* _this)
+	{
+
+		bool ret = reinterpret_cast<decltype(activeSelf_hook)*>(activeSelf_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* setActive_orig = nullptr;
+
+	void setActive_hook(void* _this, bool value)
+	{
+
+		reinterpret_cast<decltype(setActive_hook)*>(setActive_orig)(_this, value);
+
+		return;
 
 	}
 
@@ -2898,6 +2922,28 @@ namespace
 		MH_CreateHook((LPVOID)hierarchyActive_addr, hierarchyActive_hook, &hierarchyActive_orig);
 		MH_EnableHook((LPVOID)hierarchyActive_addr);
 
+		//获取object激活状态（真实激活状态）
+		auto activeSelf_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"GameObject", "get_activeSelf", 0
+		);
+
+		printf("activeSelf_addr at %p\n", activeSelf_addr);
+
+		MH_CreateHook((LPVOID)activeSelf_addr, activeSelf_hook, &activeSelf_orig);
+		MH_EnableHook((LPVOID)activeSelf_addr);
+
+		//设置激活状态（真实激活状态）
+		auto setActive_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"GameObject", "SetActive", 1
+		);
+
+		printf("setActive_addr at %p\n", setActive_addr);
+
+		MH_CreateHook((LPVOID)setActive_addr, setActive_hook, &setActive_orig);
+		MH_EnableHook((LPVOID)setActive_addr);
+
 
 		//执行GUI程序
 		thread([]() {
@@ -2936,27 +2982,102 @@ namespace
 static flat_hash_map<void*, ObjectTree> ObjDic;
 static vector<void*> rootObjList;
 
+void refreashObject() {
+	ObjDic = {};
+	rootObjList = {};
+
+	void* Transform_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Transform, UnityEngine"));
+	void* Object_list = object_hook(Transform_type, 1);
+	int ObjLength = il2cpp_symbols::get_array_length(Object_list);
+	for (int i = 0; i < ObjLength; i++) {
+		void* Obj = arrayindex_hook(Object_list, i);
+		void* gameObj = gameobject_hook(Obj);
+
+		vector<void*> children;
+		int childCount = childcount_hook(Obj);
+		for (int j = 0; j < childCount; j++) {
+			children.push_back(child_hook(Obj, j));
+		}
+
+
+		ObjectTree node;
+		node.name = UmaGetString(objectname_hook(Obj));
+		node.gameObj = gameObj;
+		node.children = children;
+		node.activeSelf = activeSelf_hook(gameObj);
+		node.activeInHierarchy = hierarchyActive_hook(gameObj);
+
+
+		ObjDic[Obj] = node;
+
+		//获取根Obj
+		void* ObjParent = parent_hook(Obj);
+
+
+		if (!ObjParent) {
+			rootObjList.push_back(Obj);
+		}
+	}
+
+	//这边是Object测试，保留备用
+	/*
+	int objListLength = ObjList.size();
+
+	for (int i = 0; i < ObjChildList.size(); i++) {
+		for (int j = 0; j < ObjChildList[i].size(); j++) {
+			int objIndex = find(ObjList.begin(), ObjList.end(), ObjChildList[i][j]) - ObjList.begin();
+			if (objIndex == objListLength) {
+				printf("Missing Child Object is %p\n", ObjChildList[i][j]);
+			}
+		}
+	}
+
+	for (int i = 0; i < ObjParentList.size(); i++) {
+		int objIndex = find(ObjList.begin(), ObjList.end(), ObjParentList[i]) - ObjList.begin();
+		if (objIndex == objListLength) {
+			printf("Missing Parent Object is %p\n", ObjParentList[i]);
+		}
+	}
+	*/
+}
+
+
 void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 
 	ImGuiTreeNodeFlags node_flags = base_flags;
 
-	bool activeInHierarchy = ObjDic[currentObj].activeInHierarchy;
+	ObjectTree* currentNode = &ObjDic[currentObj];
 
-	if (ObjDic[currentObj].children.size() != 0) {
+	bool activeSelf = currentNode->activeSelf;
+	bool activeInHierarchy = currentNode->activeInHierarchy;
+	void* gameObj = currentNode->gameObj;
+
+	ImGui::Checkbox(("##"+currentNode->name).c_str(), &activeSelf);
+	ImGui::SameLine();
+	
+	if (activeSelf != currentNode->activeSelf) {
+		printf("Something is Change! The Value is %d\n", activeSelf);
+		setActive_hook(gameObj, activeSelf);
+		currentNode->activeSelf = activeSelf;
+		refreashObject();
+		return;
+	}
+	
+	if (currentNode->children.size() != 0) {
 		if (!activeInHierarchy) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-		bool node_open = ImGui::TreeNodeEx(currentObj, node_flags, ObjDic[currentObj].name.c_str());
+		bool node_open = ImGui::TreeNodeEx(currentObj, node_flags, currentNode->name.c_str());
 		if (!activeInHierarchy) ImGui::PopStyleColor();
 		if (node_open)
 		{
-			for (int index = 0; index < ObjDic[currentObj].children.size(); index++) {
-				objRecursion(ObjDic[currentObj].children[index], base_flags);
+			for (int index = 0; index < currentNode->children.size(); index++) {
+				objRecursion(currentNode->children[index], base_flags);
 			}
 			ImGui::TreePop();
 		}
 	}else {
 		node_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen; // ImGuiTreeNodeFlags_Bullet
 		if (!activeInHierarchy) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-		ImGui::TreeNodeEx(currentObj, node_flags, ObjDic[currentObj].name.c_str());
+		ImGui::TreeNodeEx(currentObj, node_flags, currentNode->name.c_str());
 		if (!activeInHierarchy) ImGui::PopStyleColor();
 	}
 };
@@ -2983,7 +3104,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.03"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.04"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
@@ -3079,61 +3200,7 @@ int imguiwindow()
 
 			if (ImGui::Button("GetObjDic"))                           // Buttons return true when clicked (most widgets return true when edited/activated)
 			{
-				ObjDic = {};
-				rootObjList = {};
-
-				void* Transform_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Transform, UnityEngine"));
-				void* Object_list = object_hook(Transform_type, 1);
-				int ObjLength = il2cpp_symbols::get_array_length(Object_list);
-				for (int i = 0; i < ObjLength; i++) {
-					void* Obj = arrayindex_hook(Object_list, i);
-
-					vector<void*> children;
-					int childCount = childcount_hook(Obj);
-					for (int j = 0; j < childCount; j++) {
-						children.push_back(child_hook(Obj, j));
-					}
-
-
-					ObjectTree node;
-					node.name = UmaGetString(objectname_hook(Obj));
-					node.children = children;
-
-					node.activeInHierarchy = hierarchyActive_hook(gameobject_hook(Obj));
-
-
-					ObjDic[Obj] = node;
-
-					//获取根Obj
-					void* ObjParent = parent_hook(Obj);
-					
-
-					if (!ObjParent) {
-						rootObjList.push_back(Obj);
-					}
-				}
-
-				//这边是Object测试，保留备用
-				/*
-				int objListLength = ObjList.size();
-
-				for (int i = 0; i < ObjChildList.size(); i++) {
-					for (int j = 0; j < ObjChildList[i].size(); j++) {
-						int objIndex = find(ObjList.begin(), ObjList.end(), ObjChildList[i][j]) - ObjList.begin();
-						if (objIndex == objListLength) {
-							printf("Missing Child Object is %p\n", ObjChildList[i][j]);
-						}
-					}
-				}
-
-				for (int i = 0; i < ObjParentList.size(); i++) {
-					int objIndex = find(ObjList.begin(), ObjList.end(), ObjParentList[i]) - ObjList.begin();
-					if (objIndex == objListLength) {
-						printf("Missing Parent Object is %p\n", ObjParentList[i]);
-					}
-				}
-				*/
-				
+				refreashObject();
 			}
 
 			
