@@ -866,6 +866,28 @@ namespace
 
 	}
 
+	void* rotation_orig = nullptr;
+
+	Vector3 rotation_hook(void* _this)
+	{
+
+		Vector3 ret = reinterpret_cast<decltype(rotation_hook)*>(rotation_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* scale_orig = nullptr;
+
+	Vector3 scale_hook(void* _this)
+	{
+
+		Vector3 ret = reinterpret_cast<decltype(scale_hook)*>(scale_orig)(_this);
+
+		return ret;
+
+	}
+
 
 
 
@@ -2993,6 +3015,28 @@ namespace
 		MH_CreateHook((LPVOID)inst_obj_addr, inst_obj_hook, &inst_obj_orig);
 		MH_EnableHook((LPVOID)inst_obj_addr);
 
+		//从Transform获取本地欧拉旋转
+		auto rotation_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_localEulerAngles", 0
+		);
+
+		printf("rotation_addr at %p\n", rotation_addr);
+
+		MH_CreateHook((LPVOID)rotation_addr, rotation_hook, &rotation_orig);
+		MH_EnableHook((LPVOID)rotation_addr);
+
+		//从Transform获取本地缩放
+		auto scale_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_localScale", 0
+		);
+
+		printf("scale_addr at %p\n", scale_addr);
+
+		MH_CreateHook((LPVOID)scale_addr, scale_hook, &scale_orig);
+		MH_EnableHook((LPVOID)scale_addr);
+
 
 		//执行GUI程序
 		thread([]() {
@@ -3324,8 +3368,14 @@ int imguiwindow()
 				ImGui::Begin("Info Window", &show_info_window);
 				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str());
 				Vector3 V_pos = position_hook(selected_obj);
+				Vector3 V_rot = rotation_hook(selected_obj);
+				Vector3 V_scale = scale_hook(selected_obj);
 				float position[] = { V_pos.x, V_pos.y, V_pos.z };
+				float rotation[] = { V_rot.x, V_rot.y, V_rot.z };
+				float scale[] = { V_scale.x, V_scale.y, V_scale.z };
 				ImGui::InputFloat3("Position", position, "%.5f", ImGuiInputTextFlags_ReadOnly);
+				ImGui::InputFloat3("Rotation", rotation, "%.5f", ImGuiInputTextFlags_ReadOnly);
+				ImGui::InputFloat3("Scale", scale, "%.5f", ImGuiInputTextFlags_ReadOnly);
 				ImGui::End();
 			}
 			else {
