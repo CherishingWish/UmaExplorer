@@ -287,4 +287,6 @@ namespace il2cpp_symbols
 
 	uint32_t get_array_length(void* array);
 
+	void* new_object(void* klass);
+
 }

@@ -633,6 +633,7 @@ struct ObjectTree
 	string name;
 	void* gameObj;
 	int instanceID;
+	void* componentsList;
 	vector<void*> children;
 	bool activeSelf;
 	bool activeInHierarchy;
@@ -885,6 +886,17 @@ namespace
 		Vector3 ret = reinterpret_cast<decltype(scale_hook)*>(scale_orig)(_this);
 
 		return ret;
+
+	}
+
+	void* components_orig = nullptr;
+
+	void components_hook(void* _this, void* searchType, void* resultList)
+	{
+
+		reinterpret_cast<decltype(components_hook)*>(components_orig)(_this, searchType, resultList);
+
+		return;
 
 	}
 
@@ -3037,6 +3049,18 @@ namespace
 		MH_CreateHook((LPVOID)scale_addr, scale_hook, &scale_orig);
 		MH_EnableHook((LPVOID)scale_addr);
 
+		//获取GetComponents
+		auto components_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Component", "GetComponentsForListInternal", 2
+		);
+
+		printf("components_addr at %p\n", components_addr);
+
+		MH_CreateHook((LPVOID)components_addr, components_hook, &components_orig);
+		MH_EnableHook((LPVOID)components_addr);
+
+
 
 		//执行GUI程序
 		thread([]() {
@@ -3077,9 +3101,17 @@ static vector<void*> rootObjList;
 static bool show_info_window = false;
 static void* selected_obj = 0;
 
+void* createNewObject(const char* assemblyName, const char* namespaze, const char* klassName) {
+	return il2cpp_symbols::new_object(il2cpp_symbols::get_class(assemblyName, namespaze, klassName));
+}
+
 void refreashObject() {
 	ObjDic = {};
 	rootObjList = {};
+
+
+	void* Component_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Component, UnityEngine"));
+
 
 	void* Transform_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Transform, UnityEngine"));
 	void* Object_list = object_hook(Transform_type, 1);
@@ -3113,6 +3145,7 @@ void refreashObject() {
 		if (!ObjParent) {
 			rootObjList.push_back(Obj);
 		}
+
 	}
 
 	//这边是Object测试，保留备用
@@ -3139,7 +3172,6 @@ void refreashObject() {
 
 
 void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
-
 	ImGuiTreeNodeFlags node_flags = base_flags;
 
 	ObjectTree* currentNode = &ObjDic[currentObj];
@@ -3155,8 +3187,7 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 		printf("Something is Change! The Value is %d\n", activeSelf);
 		setActive_hook(gameObj, activeSelf);
 		currentNode->activeSelf = activeSelf;
-		refreashObject();
-		return;
+		printf("Maybe GetObjDic manually is better?\n");
 	}
 
 	if (currentNode->children.size() != 0) {

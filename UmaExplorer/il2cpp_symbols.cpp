@@ -136,6 +136,10 @@ namespace il2cpp_symbols
 		return il2cpp_class_from_name(image, namespaze, klassName);
 	}
 
+	void* new_object(void* klass) {
+		return il2cpp_object_new(klass);
+	}
+
 	uintptr_t get_method_pointer(const char* assemblyName, const char* namespaze,
 		const char* klassName, const char* name, int argsCount, int index)
 	{
