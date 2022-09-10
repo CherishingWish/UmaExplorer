@@ -215,6 +215,7 @@ typedef void* (*il2cpp_domain_get_t)();
 typedef void* (*il2cpp_domain_assembly_open_t)(void* domain, const char* name);
 typedef void* (*il2cpp_assembly_get_image_t)(void* assembly);
 typedef void* (*il2cpp_class_from_name_t)(void* image, const char* namespaze, const char* name);
+typedef void* (*il2cpp_class_from_system_type_t)(void* type);
 typedef MethodInfo* (*il2cpp_class_get_methods_t)(void* klass, void** iter);
 typedef MethodInfo* (*il2cpp_class_get_method_from_name_t)(void* klass, const char* name, int argsCount);
 typedef void* (*il2cpp_method_get_param_t)(const MethodInfo* method, uint32_t index);
@@ -237,6 +238,7 @@ extern il2cpp_domain_get_t il2cpp_domain_get;
 extern il2cpp_domain_assembly_open_t il2cpp_domain_assembly_open;
 extern il2cpp_assembly_get_image_t il2cpp_assembly_get_image;
 extern il2cpp_class_from_name_t il2cpp_class_from_name;
+extern il2cpp_class_from_system_type_t il2cpp_class_from_system_type;
 extern il2cpp_class_get_methods_t il2cpp_class_get_methods;
 extern il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;
 extern il2cpp_method_get_param_t il2cpp_method_get_param;
@@ -288,5 +290,14 @@ namespace il2cpp_symbols
 	uint32_t get_array_length(void* array);
 
 	void* new_object(void* klass);
+
+	void* new_array(void* elementTypeInfo, size_t length);
+
+	uintptr_t get_method_pointer_re(const char* assemblyName, const char* namespaze,
+		const char* klassName, const char* name, int argsCount, int index);
+
+	void* get_type_class(void* type);
+
+	uintptr_t class_get_method(void* klass, const char* name, int argsCount);
 
 }

@@ -633,7 +633,7 @@ struct ObjectTree
 	string name;
 	void* gameObj;
 	int instanceID;
-	void* componentsList;
+	vector<void*> components;
 	vector<void*> children;
 	bool activeSelf;
 	bool activeInHierarchy;
@@ -891,12 +891,67 @@ namespace
 
 	void* components_orig = nullptr;
 
-	void components_hook(void* _this, void* searchType, void* resultList)
+	void* components_hook(void* _this, void* type, bool useSearchTypeAsArrayReturnType = 1, bool recursive = 0, bool includeInactive = 1, bool reverse = 0, void* resultList = NULL)
 	{
 
-		reinterpret_cast<decltype(components_hook)*>(components_orig)(_this, searchType, resultList);
+		void* ret = reinterpret_cast<decltype(components_hook)*>(components_orig)(_this, type, useSearchTypeAsArrayReturnType, recursive, includeInactive, reverse, resultList);
+
+		return ret;
+
+	}
+
+	void* reftype_orig = nullptr;
+
+	void* reftype_hook(void* _this, umastring* searchType)
+	{
+
+		void* ret = reinterpret_cast<decltype(reftype_hook)*>(reftype_orig)(_this, searchType);
+
+		return ret;
+
+	}
+
+	void* refload_orig = nullptr;
+
+	void* refload_hook(umastring* assemblyString)
+	{
+
+		void* ret = reinterpret_cast<decltype(refload_hook)*>(refload_orig)(assemblyString);
+
+		return ret;
+
+	}
+
+	void* refmethod_orig = nullptr;
+
+	void* refmethod_hook(void* _this, umastring* name, void* types)
+	{
+
+		void* ret = reinterpret_cast<decltype(refmethod_hook)*>(refmethod_orig)(_this, name, types);
+
+		return ret;
+
+	}
+
+	void* arrayset_orig = nullptr;
+
+	void arrayset_hook(void* _this, void* value, int index)
+	{
+
+		reinterpret_cast<decltype(arrayset_hook)*>(arrayset_orig)(_this, value, index);
 
 		return;
+
+	}
+
+	void* create_orig = nullptr;
+
+	void* create_hook(void* _this, void* type)
+	{
+
+		void* ret = reinterpret_cast<decltype(create_hook)*>(create_orig)(_this, type);
+
+		return ret;
 
 	}
 
@@ -3049,17 +3104,77 @@ namespace
 		MH_CreateHook((LPVOID)scale_addr, scale_hook, &scale_orig);
 		MH_EnableHook((LPVOID)scale_addr);
 
-		//获取GetComponents
+		//通过反射获取Type(泛型Hook处理)
+
+		auto reftype_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Reflection",
+			"Assembly", "GetType", 1
+		);
+
+		printf("reftype_addr at %p\n", reftype_addr);
+
+		MH_CreateHook((LPVOID)reftype_addr, reftype_hook, &reftype_orig);
+		MH_EnableHook((LPVOID)reftype_addr);
+
+		//加载该类型所在的Dll(泛型Hook处理)
+
+		auto refload_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Reflection",
+			"Assembly", "Load", 1
+		);
+
+		printf("refload_addr at %p\n", refload_addr);
+
+		MH_CreateHook((LPVOID)refload_addr, refload_hook, &refload_orig);
+		MH_EnableHook((LPVOID)refload_addr);
+
+		//通过反射获取Method(泛型Hook处理)
+
+		auto refmethod_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Type", "GetMethod", 2
+		);
+
+		printf("refmethod_addr at %p\n", refmethod_addr);
+
+		MH_CreateHook((LPVOID)refmethod_addr, refmethod_hook, &refmethod_orig);
+		MH_EnableHook((LPVOID)refmethod_addr);
+
+		//获取设置Array数据的方法
+
+		auto arrayset_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Array", "SetValue", 2
+		);
+
+		printf("arrayset_addr at %p\n", arrayset_addr);
+
+		MH_CreateHook((LPVOID)arrayset_addr, arrayset_hook, &arrayset_orig);
+		MH_EnableHook((LPVOID)arrayset_addr);
+
+		//尝试创建新物体
+
+		auto create_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Reflection",
+			"Assembly", "CreateInstance", 1
+		);
+
+		printf("create_addr at %p\n", create_addr);
+
+		MH_CreateHook((LPVOID)create_addr, create_hook, &create_orig);
+		MH_EnableHook((LPVOID)create_addr);
+
+		//尝试获取Components
+
 		auto components_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
-			"Component", "GetComponentsForListInternal", 2
+			"GameObject", "GetComponentsInternal", 6
 		);
 
 		printf("components_addr at %p\n", components_addr);
 
 		MH_CreateHook((LPVOID)components_addr, components_hook, &components_orig);
 		MH_EnableHook((LPVOID)components_addr);
-
 
 
 		//执行GUI程序
@@ -3100,16 +3215,51 @@ static flat_hash_map<void*, ObjectTree> ObjDic;
 static vector<void*> rootObjList;
 static bool show_info_window = false;
 static void* selected_obj = 0;
+static bool show_active_box = false;
 
-void* createNewObject(const char* assemblyName, const char* namespaze, const char* klassName) {
-	return il2cpp_symbols::new_object(il2cpp_symbols::get_class(assemblyName, namespaze, klassName));
+
+//从名称中获取类型名
+string getTypeName(string name) {
+	int left = name.rfind('(') + 1;
+	int right = name.rfind(')');
+
+	return name.substr(left, right-left);
+}
+
+//这边是创建新物体以及直接使用方法的测试，不过暂时用不到
+void* getGenericMethod(string dll, string reftype) {
+	void* assembly = refload_hook((umastring*)il2cpp_symbols::get_string(dll.c_str()));
+	printf("Get Assembly OK at %p\n", assembly);
+	void* type = reftype_hook(assembly, (umastring*)il2cpp_symbols::get_string(reftype.c_str()));
+	printf("Get Type OK at %p\n", type);
+	void* _class = il2cpp_symbols::get_type_class(type);
+	printf("Get Class OK at %p\n", _class);
+	auto method = il2cpp_symbols::class_get_method(_class, "get_Capacity", 0);
+	auto method_Add = il2cpp_symbols::class_get_method(_class, "Add", 1);
+	printf("Create Method OK at %p\n", method);
+
+	typedef int (*Method_ftn)(void*);
+	typedef void (*Method_Add_ftn)(void*, int);
+
+	void* obj = create_hook(assembly, (umastring*)il2cpp_symbols::get_string(reftype.c_str()));
+
+	//((Method_Add_ftn)method_add)(obj, 1);
+
+	int num = ((Method_ftn)method)(obj);
+
+	printf("Number OK is %d\n", num);
+
+	printf("Create Obj OK at %p\n", obj);
+	
+	
+	return obj;
 }
 
 void refreashObject() {
 	ObjDic = {};
 	rootObjList = {};
 
-
+	//有新的获取Type的方式了，不过暂时保留
 	void* Component_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Component, UnityEngine"));
 
 
@@ -3120,6 +3270,22 @@ void refreashObject() {
 		void* Obj = arrayindex_hook(Object_list, i);
 		void* gameObj = gameobject_hook(Obj);
 
+		//void* new_list = getGenericMethod("mscorlib", "System.Collections.Generic.List`1[[UnityEngine.Object, UnityEngine]]");
+		void* component = components_hook(gameObj, Component_type);
+		int ComLength = il2cpp_symbols::get_array_length(component);
+		
+		vector<void*> components;
+		for (int j = 0; j < ComLength; j++) {
+			components.push_back(arrayindex_hook(component, j));
+		}
+
+		//printf("Get Array Success at %p\n", components);
+		//printf("Array Size is %d\n", il2cpp_symbols::get_array_length(components));
+		
+		//void* new_list = getGenericMethod("mscorlib", "System.Object");
+		//components_hook(gameObj, Component_type, new_list);
+		//printf("At List Once!");
+
 		vector<void*> children;
 		int childCount = childcount_hook(Obj);
 		for (int j = 0; j < childCount; j++) {
@@ -3128,9 +3294,10 @@ void refreashObject() {
 
 
 		ObjectTree node;
-		node.name = UmaGetString(objectname_hook(Obj));
+		node.name = UmaGetString(objectname_hook(gameObj));
 		node.gameObj = gameObj;
 		node.instanceID = obj_inst_hook(Obj);
+		node.components = components;
 		node.children = children;
 		node.activeSelf = activeSelf_hook(gameObj);
 		node.activeInHierarchy = hierarchyActive_hook(gameObj);
@@ -3180,6 +3347,7 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 	bool activeInHierarchy = currentNode->activeInHierarchy;
 	void* gameObj = currentNode->gameObj;
 
+	ImGui::BeginDisabled(!show_active_box);
 	ImGui::Checkbox(("##" + currentNode->name).c_str(), &activeSelf);
 	ImGui::SameLine();
 
@@ -3189,6 +3357,7 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 		currentNode->activeSelf = activeSelf;
 		printf("Maybe GetObjDic manually is better?\n");
 	}
+	ImGui::EndDisabled();
 
 	if (currentNode->children.size() != 0) {
 		if (!activeInHierarchy) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -3218,6 +3387,16 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 	}
 };
 
+//显示组件
+void show_components(void* currentObj) {
+	ObjectTree* currentNode = &ObjDic[currentObj];
+	vector<void*> components = currentNode->components;
+	for (int i = 0; i < components.size(); i++) {
+		if (ImGui::TreeNode(components[i], getTypeName(UmaGetString(objectname_hook(components[i]))).c_str())) {
+			ImGui::TreePop();
+		};
+	}
+}
 
 //************************************************************************************************************
 static ID3D11Device* g_pd3dDevice = NULL;
@@ -3330,6 +3509,8 @@ int imguiwindow()
 			ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 			ImGui::Checkbox("Another Window", &show_another_window);
 			ImGui::Checkbox("Obj Window", &show_obj_window);
+			ImGui::Checkbox("Enable ActiveBox", &show_active_box);
+
 
 			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
 			ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
@@ -3337,6 +3518,33 @@ int imguiwindow()
 			if (ImGui::Button("GetObjDic"))                           // Buttons return true when clicked (most widgets return true when edited/activated)
 			{
 				refreashObject();
+				
+				//getGenericMethod("mscorlib", "System.Collections.Generic.List`1[[UnityEngine.Component, UnityEngine]]");
+				//getGenericMethod("mscorlib", "System.Int32");
+
+				//数组测试成功，特此保留(疑点:Hook的按名字查找到底发生了什么)
+				/*
+				void* c_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Component, UnityEngine"));
+
+				void* c_class = il2cpp_symbols::get_class("mscorlib.dll", "System", "Type");
+				printf("Get Class OK at %p\n", c_class);
+				void* c_array = il2cpp_symbols::new_array(c_class, 0);
+				printf("Get Array OK at %p\n", c_array);
+				
+				int c_size = il2cpp_symbols::get_array_length(c_array);
+				printf("Get Size OK is %d\n", c_size);
+				
+				printf("Obj OK at %p\n", c_type);
+				arrayset_hook(c_array, c_type, 0);
+				printf("Set Array OK\n");
+				void* c_result = arrayindex_hook(c_array, 0);
+				printf("Get Obj OK is %p\n", c_result);
+				
+				void* c_method = refmethod_hook(c_type, (umastring*)il2cpp_symbols::get_string("GetComponent"), c_array);
+				printf("Get Method OK is %p\n", c_method);
+				*/
+
+
 			}
 
 
@@ -3407,6 +3615,7 @@ int imguiwindow()
 				ImGui::InputFloat3("Position", position, "%.5f", ImGuiInputTextFlags_ReadOnly);
 				ImGui::InputFloat3("Rotation", rotation, "%.5f", ImGuiInputTextFlags_ReadOnly);
 				ImGui::InputFloat3("Scale", scale, "%.5f", ImGuiInputTextFlags_ReadOnly);
+				show_components(selected_obj);
 				ImGui::End();
 			}
 			else {
