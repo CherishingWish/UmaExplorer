@@ -228,6 +228,11 @@ typedef void (*il2cpp_field_get_value_t)(void* obj, void* field, void* value);
 typedef void* (*il2cpp_field_get_value_object_t)(void* field, void* obj);
 typedef void* (*il2cpp_type_get_object_t)(void* type);
 
+typedef void* (*il2cpp_class_get_properties_t)(void* klass, void** iter);
+typedef const char* (*il2cpp_property_get_name_t)(void* prop);
+typedef MethodInfo* (*il2cpp_property_get_get_method_t)(void* prop);
+typedef MethodInfo* (*il2cpp_property_get_set_method_t)(void* prop);
+typedef void* (*il2cpp_method_get_return_type_t)(void* method);
 
 typedef MethodInfo* (*il2cpp_class_get_methods_t)(void* klass, void** iter);
 typedef MethodInfo* (*il2cpp_class_get_method_from_name_t)(void* klass, const char* name, int argsCount);
@@ -264,6 +269,13 @@ extern il2cpp_field_get_value_t il2cpp_field_get_value;
 extern il2cpp_field_get_value_object_t il2cpp_field_get_value_object;
 extern il2cpp_type_get_object_t il2cpp_type_get_object;
 //
+
+extern il2cpp_class_get_properties_t il2cpp_class_get_properties;
+extern il2cpp_property_get_name_t il2cpp_property_get_name;
+extern il2cpp_property_get_get_method_t il2cpp_property_get_get_method;
+extern il2cpp_property_get_set_method_t il2cpp_property_get_set_method;
+extern il2cpp_method_get_return_type_t il2cpp_method_get_return_type;
+
 extern il2cpp_class_get_methods_t il2cpp_class_get_methods;
 extern il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;
 extern il2cpp_method_get_param_t il2cpp_method_get_param;

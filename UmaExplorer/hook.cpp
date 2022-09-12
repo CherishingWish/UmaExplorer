@@ -980,7 +980,7 @@ namespace
 		//printf("start is %p\n", start);
 		for (int i = 0; i <= length - 1; i++) {
 			if (debug == 1) {
-				//printf("Text is %p\n", *start);
+				printf("Text is %p\n", *start);
 			}
 			out += *(start++);
 		}
@@ -3458,6 +3458,96 @@ void getField(void* obj, void* _class) {
 	}
 }
 
+//递归遍历所有Property
+void getProperty(void* obj, void* _class) {
+	void* iter = nullptr;
+	void* parent = il2cpp_class_get_parent(_class);
+	if (parent) {
+		getProperty(obj, parent);
+	}
+	bool first = true;
+	while (void* property = il2cpp_class_get_properties(_class, &iter)) {
+
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		if (first) {
+			string className = il2cpp_type_get_name(il2cpp_class_get_type(_class));
+			ImGui::Text(className.c_str());
+			first = false;
+		}
+		ImGui::TableSetColumnIndex(1);
+		string propertyName = il2cpp_property_get_name(property);
+		ImGui::Text(propertyName.c_str());
+		ImGui::TableSetColumnIndex(4);
+		MethodInfo* getMethod;
+		if (getMethod = il2cpp_property_get_get_method(property)) {
+			if (ImGui::Button("get")) {
+
+			}
+			ImGui::SameLine();
+		}
+		MethodInfo* setMethod;
+		if (setMethod = il2cpp_property_get_set_method(property)) {
+			ImGui::BeginDisabled();
+			if (ImGui::Button("set")) {
+
+			}
+			ImGui::EndDisabled();
+		}
+		ImGui::TableSetColumnIndex(2);
+		void* propertyType = nullptr;
+		string propertyTypeName;
+		if (getMethod) {
+			propertyType = il2cpp_method_get_return_type(getMethod);
+			if (propertyType) {
+				propertyTypeName = il2cpp_type_get_name(propertyType);
+				ImGui::Text(propertyTypeName.c_str());
+			}
+		}
+		ImGui::TableSetColumnIndex(3);
+		if (getMethod && getMethod->methodPointer && propertyType) {
+			if (propertyTypeName == "System.String") {
+				typedef void* (*getMethod_t)(void*);
+				void* value = ((getMethod_t)getMethod->methodPointer)(obj);
+				if (value) {
+					string trueText = UmaGetString((umastring*)value);
+					ImGui::Text(trueText.c_str());
+				}
+			}
+			else if(propertyTypeName == "System.Int32"){
+				typedef int (*getMethod_t)(void*);
+				int value = ((getMethod_t)getMethod->methodPointer)(obj);
+				ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.UInt32") {
+				typedef unsigned int (*getMethod_t)(void*);
+				unsigned int value = ((getMethod_t)getMethod->methodPointer)(obj);
+				ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.Int64") {
+				typedef long long (*getMethod_t)(void*);
+				long long value = ((getMethod_t)getMethod->methodPointer)(obj);
+				ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.Boolean") {
+				typedef bool (*getMethod_t)(void*);
+				bool value = ((getMethod_t)getMethod->methodPointer)(obj);
+				if (value) {
+					ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
+				}
+				else {
+					ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
+				}
+			}
+			else if (propertyTypeName == "System.Single") {
+				typedef float (*getMethod_t)(void*);
+				float value = ((getMethod_t)getMethod->methodPointer)(obj);
+				ImGui::Text(to_string(value).c_str());
+			}
+		}
+	}
+}
+
 
 //显示组件
 void show_components(void* currentObj) {
@@ -3467,22 +3557,45 @@ void show_components(void* currentObj) {
 		if (ImGui::TreeNode(components[i], getTypeName(UmaGetString(objectname_hook(components[i]))).c_str())) {
 			void* _class = il2cpp_symbols::object_get_class(components[i]);
 			
-			//开始Field处理
-
 			ImGuiTableFlags flags = 1;
+
+			//开始Field处理
+			
 			string componentField = to_string(int(components[i])) + "_field_" + to_string(i);
-			if (ImGui::BeginTable(componentField.c_str(), 4, flags)) {
-				ImGui::TableSetupColumn("Class Name");
-				ImGui::TableSetupColumn("Field Name");
-				ImGui::TableSetupColumn("Field Type");
-				ImGui::TableSetupColumn("Field Value");
-				ImGui::TableHeadersRow();
+			if (ImGui::TreeNode((componentField+"_tree").c_str(), "Field")) {
+				if (ImGui::BeginTable((componentField+"_table").c_str(), 4, flags)) {
+					ImGui::TableSetupColumn("Class Name");
+					ImGui::TableSetupColumn("Field Name");
+					ImGui::TableSetupColumn("Field Type");
+					ImGui::TableSetupColumn("Field Value");
+					ImGui::TableHeadersRow();
 
-				getField(components[i], _class);
+					getField(components[i], _class);
 
-				ImGui::EndTable();
+					ImGui::EndTable();
+				}
+				ImGui::TreePop();
 			}
+			
+			//开始Property处理
 
+			string componentProperty = to_string(int(components[i])) + "_property_" + to_string(i);
+			if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
+				if (ImGui::BeginTable((componentProperty + "_table").c_str(), 5, flags)) {
+					ImGui::TableSetupColumn("Class Name");
+					ImGui::TableSetupColumn("Property Name");
+					ImGui::TableSetupColumn("Property Type");
+					ImGui::TableSetupColumn("Property Value");
+					ImGui::TableSetupColumn("Property Method");
+					ImGui::TableHeadersRow();
+
+					getProperty(components[i], _class);
+
+					ImGui::EndTable();
+				}
+
+				ImGui::TreePop();
+			}
 			
 
 			ImGui::TreePop();
@@ -3511,7 +3624,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.07"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.08"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
