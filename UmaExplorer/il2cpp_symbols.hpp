@@ -216,6 +216,19 @@ typedef void* (*il2cpp_domain_assembly_open_t)(void* domain, const char* name);
 typedef void* (*il2cpp_assembly_get_image_t)(void* assembly);
 typedef void* (*il2cpp_class_from_name_t)(void* image, const char* namespaze, const char* name);
 typedef void* (*il2cpp_class_from_system_type_t)(void* type);
+typedef void* (*il2cpp_object_get_class_t)(void* obj);
+
+typedef void* (*il2cpp_class_get_fields_t)(void* klass, void** iter);
+typedef const char* (*il2cpp_field_get_name_t)(void* field);
+typedef void* (*il2cpp_field_get_type_t)(void* field);
+typedef char* (*il2cpp_type_get_name_t)(void* type);
+typedef void* (*il2cpp_class_get_parent_t)(void* klass);
+typedef void* (*il2cpp_class_get_type_t)(void* klass);
+typedef void (*il2cpp_field_get_value_t)(void* obj, void* field, void* value);
+typedef void* (*il2cpp_field_get_value_object_t)(void* field, void* obj);
+typedef void* (*il2cpp_type_get_object_t)(void* type);
+
+
 typedef MethodInfo* (*il2cpp_class_get_methods_t)(void* klass, void** iter);
 typedef MethodInfo* (*il2cpp_class_get_method_from_name_t)(void* klass, const char* name, int argsCount);
 typedef void* (*il2cpp_method_get_param_t)(const MethodInfo* method, uint32_t index);
@@ -239,6 +252,18 @@ extern il2cpp_domain_assembly_open_t il2cpp_domain_assembly_open;
 extern il2cpp_assembly_get_image_t il2cpp_assembly_get_image;
 extern il2cpp_class_from_name_t il2cpp_class_from_name;
 extern il2cpp_class_from_system_type_t il2cpp_class_from_system_type;
+extern il2cpp_object_get_class_t il2cpp_object_get_class;
+//Field
+extern il2cpp_class_get_fields_t il2cpp_class_get_fields;
+extern il2cpp_field_get_name_t il2cpp_field_get_name;
+extern il2cpp_field_get_type_t il2cpp_field_get_type;
+extern il2cpp_type_get_name_t il2cpp_type_get_name;
+extern il2cpp_class_get_parent_t il2cpp_class_get_parent;
+extern il2cpp_class_get_type_t il2cpp_class_get_type;
+extern il2cpp_field_get_value_t il2cpp_field_get_value;
+extern il2cpp_field_get_value_object_t il2cpp_field_get_value_object;
+extern il2cpp_type_get_object_t il2cpp_type_get_object;
+//
 extern il2cpp_class_get_methods_t il2cpp_class_get_methods;
 extern il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;
 extern il2cpp_method_get_param_t il2cpp_method_get_param;
@@ -299,5 +324,7 @@ namespace il2cpp_symbols
 	void* get_type_class(void* type);
 
 	uintptr_t class_get_method(void* klass, const char* name, int argsCount);
+
+	void* object_get_class(void* obj);
 
 }

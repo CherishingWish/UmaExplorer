@@ -972,11 +972,16 @@ namespace
 
 	}
 
-	string UmaGetString(umastring* in) {
+	string UmaGetString(umastring* in, int debug = 0) {
 		string out = "";
 		long long length = s2c_hook(in)->length;
+		//printf("length is %d\n", length);
 		short* start = &(s2c_hook(in)->charstart);
+		//printf("start is %p\n", start);
 		for (int i = 0; i <= length - 1; i++) {
+			if (debug == 1) {
+				//printf("Text is %p\n", *start);
+			}
 			out += *(start++);
 		}
 		return out;
@@ -3176,6 +3181,8 @@ namespace
 		MH_CreateHook((LPVOID)components_addr, components_hook, &components_orig);
 		MH_EnableHook((LPVOID)components_addr);
 
+		//
+
 
 		//执行GUI程序
 		thread([]() {
@@ -3387,12 +3394,97 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 	}
 };
 
+//递归遍历所有Field
+void getField(void* obj, void* _class) {
+	void* iter = nullptr;
+	void* parent = il2cpp_class_get_parent(_class);
+	if (parent) {
+		getField(obj, parent);
+	}
+	bool first = true;
+	while (void* field = il2cpp_class_get_fields(_class, &iter))
+	{
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		if (first) {
+			string className = il2cpp_type_get_name(il2cpp_class_get_type(_class));
+			ImGui::Text(className.c_str());
+			first = false;
+		}
+		ImGui::TableSetColumnIndex(1);
+		string fieldName = il2cpp_field_get_name(field);
+		ImGui::Text(fieldName.c_str());
+		ImGui::TableSetColumnIndex(2);
+		void* fieldType = il2cpp_field_get_type(field);
+		string fieldTypeName = il2cpp_type_get_name(fieldType);
+		ImGui::Text(fieldTypeName.c_str());
+		ImGui::TableSetColumnIndex(3);
+		void* value = il2cpp_field_get_value_object(field, obj);
+		if (value) {
+			if (fieldTypeName == "System.String") {
+				string trueText = UmaGetString((umastring*)value);
+				ImGui::Text(trueText.c_str());
+			}
+			else if (fieldTypeName == "System.Int32") {
+				int trueInt32 = *((int*)value + 4);
+				ImGui::Text(to_string(trueInt32).c_str());
+			}
+			else if (fieldTypeName == "System.UInt32") {
+				unsigned int trueUInt32 = *((unsigned int*)value + 4);
+				ImGui::Text(to_string(trueUInt32).c_str());
+			}
+			else if (fieldTypeName == "System.IntPtr") {
+				size_t trueIntPtr = *(size_t*)((int*)value + 4);
+				ImGui::Text("0X%p", trueIntPtr);
+			}
+			else if (fieldTypeName == "System.Single") {
+				float trueSingle = *(float*)((int*)value + 4);
+				ImGui::Text(to_string(trueSingle).c_str());
+			}
+			else if (fieldTypeName == "System.Boolean") {
+				bool trueBoolean = *(bool*)((int*)value + 4);
+				if (trueBoolean) {
+					ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
+				}
+				else {
+					ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
+				}
+			}
+		}
+		else {
+			ImGui::TextDisabled("Empty");
+		}
+		
+	}
+}
+
+
 //显示组件
 void show_components(void* currentObj) {
 	ObjectTree* currentNode = &ObjDic[currentObj];
 	vector<void*> components = currentNode->components;
 	for (int i = 0; i < components.size(); i++) {
 		if (ImGui::TreeNode(components[i], getTypeName(UmaGetString(objectname_hook(components[i]))).c_str())) {
+			void* _class = il2cpp_symbols::object_get_class(components[i]);
+			
+			//开始Field处理
+
+			ImGuiTableFlags flags = 1;
+			string componentField = to_string(int(components[i])) + "_field_" + to_string(i);
+			if (ImGui::BeginTable(componentField.c_str(), 4, flags)) {
+				ImGui::TableSetupColumn("Class Name");
+				ImGui::TableSetupColumn("Field Name");
+				ImGui::TableSetupColumn("Field Type");
+				ImGui::TableSetupColumn("Field Value");
+				ImGui::TableHeadersRow();
+
+				getField(components[i], _class);
+
+				ImGui::EndTable();
+			}
+
+			
+
 			ImGui::TreePop();
 		};
 	}
@@ -3419,7 +3511,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.06"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.07"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
