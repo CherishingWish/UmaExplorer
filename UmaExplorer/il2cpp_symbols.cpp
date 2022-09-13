@@ -52,6 +52,11 @@ il2cpp_property_get_name_t il2cpp_property_get_name;
 il2cpp_property_get_get_method_t il2cpp_property_get_get_method;
 il2cpp_property_get_set_method_t il2cpp_property_get_set_method;
 il2cpp_method_get_return_type_t il2cpp_method_get_return_type;
+il2cpp_method_get_declaring_type_t il2cpp_method_get_declaring_type;
+
+il2cpp_class_is_enum_t il2cpp_class_is_enum;
+il2cpp_type_get_class_or_element_class_t il2cpp_type_get_class_or_element_class;
+il2cpp_class_from_type_t il2cpp_class_from_type;
 
 il2cpp_class_get_methods_t il2cpp_class_get_methods;
 il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;
@@ -107,6 +112,11 @@ namespace il2cpp_symbols
 		RESOLVE_IMPORT(il2cpp_property_get_get_method);
 		RESOLVE_IMPORT(il2cpp_property_get_set_method);
 		RESOLVE_IMPORT(il2cpp_method_get_return_type);
+		RESOLVE_IMPORT(il2cpp_method_get_declaring_type);
+
+		RESOLVE_IMPORT(il2cpp_class_is_enum);
+		RESOLVE_IMPORT(il2cpp_type_get_class_or_element_class);
+		RESOLVE_IMPORT(il2cpp_class_from_type);
 
 		RESOLVE_IMPORT(il2cpp_class_get_methods);
 		RESOLVE_IMPORT(il2cpp_class_get_method_from_name);

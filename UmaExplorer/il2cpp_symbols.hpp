@@ -233,6 +233,11 @@ typedef const char* (*il2cpp_property_get_name_t)(void* prop);
 typedef MethodInfo* (*il2cpp_property_get_get_method_t)(void* prop);
 typedef MethodInfo* (*il2cpp_property_get_set_method_t)(void* prop);
 typedef void* (*il2cpp_method_get_return_type_t)(void* method);
+typedef void* (*il2cpp_method_get_declaring_type_t)(void* method);
+
+typedef bool (*il2cpp_class_is_enum_t)(void* klass);
+typedef void* (*il2cpp_type_get_class_or_element_class_t)(void* klass);
+typedef void* (*il2cpp_class_from_type_t)(void* type);
 
 typedef MethodInfo* (*il2cpp_class_get_methods_t)(void* klass, void** iter);
 typedef MethodInfo* (*il2cpp_class_get_method_from_name_t)(void* klass, const char* name, int argsCount);
@@ -275,6 +280,11 @@ extern il2cpp_property_get_name_t il2cpp_property_get_name;
 extern il2cpp_property_get_get_method_t il2cpp_property_get_get_method;
 extern il2cpp_property_get_set_method_t il2cpp_property_get_set_method;
 extern il2cpp_method_get_return_type_t il2cpp_method_get_return_type;
+extern il2cpp_method_get_declaring_type_t il2cpp_method_get_declaring_type;
+
+extern il2cpp_class_is_enum_t il2cpp_class_is_enum;
+extern il2cpp_type_get_class_or_element_class_t il2cpp_type_get_class_or_element_class;
+extern il2cpp_class_from_type_t il2cpp_class_from_type;
 
 extern il2cpp_class_get_methods_t il2cpp_class_get_methods;
 extern il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;

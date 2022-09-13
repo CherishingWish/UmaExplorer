@@ -955,6 +955,28 @@ namespace
 
 	}
 
+	void* objType_orig = nullptr;
+
+	void* objType_hook(void* _this)
+	{
+
+		void* ret = reinterpret_cast<decltype(objType_hook)*>(objType_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* guid_orig = nullptr;
+
+	umastring* guid_hook(void* _this)
+	{
+
+		umastring* ret = reinterpret_cast<decltype(guid_hook)*>(guid_orig)(_this);
+
+		return ret;
+
+	}
+
 
 
 
@@ -3181,7 +3203,29 @@ namespace
 		MH_CreateHook((LPVOID)components_addr, components_hook, &components_orig);
 		MH_EnableHook((LPVOID)components_addr);
 
-		//
+		//Object获取Type
+
+		auto objType_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Object", "GetType", 0
+		);
+
+		printf("objType_addr at %p\n", objType_addr);
+
+		MH_CreateHook((LPVOID)objType_addr, objType_hook, &objType_orig);
+		MH_EnableHook((LPVOID)objType_addr);
+
+		//GUID转string
+
+		auto guid_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Guid", "ToString", 0
+		);
+
+		printf("guid_addr at %p\n", guid_addr);
+
+		MH_CreateHook((LPVOID)guid_addr, guid_hook, &guid_orig);
+		MH_EnableHook((LPVOID)guid_addr);
 
 
 		//执行GUI程序
@@ -3394,6 +3438,29 @@ void objRecursion(void* currentObj, ImGuiTreeNodeFlags base_flags) {
 	}
 };
 
+//找到泛型对应的字符串
+string getEnumName(void* _class, int id) {
+	void* iter = nullptr;
+	void* tempObj = il2cpp_object_new(_class);
+	bool first = true;
+	while (void* field = il2cpp_class_get_fields(_class, &iter)) {
+		if (first) {
+			first = false;
+			continue;
+		}
+		string fieldName = il2cpp_field_get_name(field);
+		void* fieldId = il2cpp_field_get_value_object(field, tempObj);
+		if (fieldId) {
+			int trueId = *((int*)fieldId + 4);
+			if (id == trueId) {
+				return fieldName;
+			}
+		}
+	}
+	return "";
+}
+
+
 //递归遍历所有Field
 void getField(void* obj, void* _class) {
 	void* iter = nullptr;
@@ -3421,7 +3488,13 @@ void getField(void* obj, void* _class) {
 		ImGui::TableSetColumnIndex(3);
 		void* value = il2cpp_field_get_value_object(field, obj);
 		if (value) {
-			if (fieldTypeName == "System.String") {
+			void* fieldClass = il2cpp_object_get_class(value);
+			if (il2cpp_class_is_enum(fieldClass)) {
+				int trueEnumValue = *((int*)value + 4);
+				string trueEnumName = getEnumName(fieldClass, trueEnumValue);
+				ImGui::Text("%d (%s)", trueEnumValue, trueEnumName.c_str());
+			}
+			else if (fieldTypeName == "System.String") {
 				string trueText = UmaGetString((umastring*)value);
 				ImGui::Text(trueText.c_str());
 			}
@@ -3449,6 +3522,10 @@ void getField(void* obj, void* _class) {
 				else {
 					ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
 				}
+			}
+			else if (fieldTypeName == "System.Guid") {
+				string trueGuid = UmaGetString(guid_hook(value));
+				ImGui::Text(trueGuid.c_str());
 			}
 		}
 		else {
@@ -3506,6 +3583,14 @@ void getProperty(void* obj, void* _class) {
 		}
 		ImGui::TableSetColumnIndex(3);
 		if (getMethod && getMethod->methodPointer && propertyType) {
+			void* propertyClass = il2cpp_class_from_type(propertyType);
+			if (il2cpp_class_is_enum(propertyClass)) {
+				typedef int (*getMethod_t)(void*);
+				int value = ((getMethod_t)getMethod->methodPointer)(obj);
+				string enumName = getEnumName(propertyClass, value);
+				ImGui::Text("%d (%s)", value, enumName.c_str());
+				
+			}
 			if (propertyTypeName == "System.String") {
 				typedef void* (*getMethod_t)(void*);
 				void* value = ((getMethod_t)getMethod->methodPointer)(obj);
@@ -3544,6 +3629,7 @@ void getProperty(void* obj, void* _class) {
 				float value = ((getMethod_t)getMethod->methodPointer)(obj);
 				ImGui::Text(to_string(value).c_str());
 			}
+			//获取属性的GUID大失败
 		}
 	}
 }
