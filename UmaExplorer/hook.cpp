@@ -73,6 +73,9 @@ int global_chara_id;
 int global_fps = 60;
 char file_fps[100];
 
+static void* Global_ProInfo;
+static void* namePro;
+
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
 
@@ -645,12 +648,19 @@ struct ObjectTree
 	bool activeInHierarchy;
 };
 
-struct ObjectWindowInfo 
+struct ObjectWindowInfo
 {
 	void* obj;
 	void* _class;
 	bool state;
 	string name;
+};
+
+struct ObjectProInfo
+{
+	void* type;
+	void* properties;
+	int proLength;
 };
 
 namespace
@@ -1002,23 +1012,23 @@ namespace
 
 	}
 
-	void* typePro_orig = nullptr;
+	void* typePros_orig = nullptr;
 
-	void* typePro_hook(void* _this)
+	void* typePros_hook(void* _this)
 	{
 
-		void* ret = reinterpret_cast<decltype(typePro_hook)*>(typePro_orig)(_this);
+		void* ret = reinterpret_cast<decltype(typePros_hook)*>(typePros_orig)(_this);
 
 		return ret;
 
 	}
 
-	void* proType_orig = nullptr;
+	void* typePro_orig = nullptr;
 
-	void* proType_hook(void* _this)
+	void* typePro_hook(void* _this, void* name)
 	{
 
-		void* ret = reinterpret_cast<decltype(proType_hook)*>(proType_orig)(_this);
+		void* ret = reinterpret_cast<decltype(typePro_hook)*>(typePro_orig)(_this, name);
 
 		return ret;
 
@@ -2201,7 +2211,7 @@ namespace
 
 	}
 
-	
+
 
 	void* index_orig = nullptr;
 
@@ -3288,9 +3298,21 @@ namespace
 
 		//Type获取properties
 
-		auto typePro_addr = il2cpp_symbols::get_method_pointer(
+		auto typePros_addr = il2cpp_symbols::get_method_pointer(
 			"mscorlib.dll", "System",
 			"Type", "GetProperties", 0
+		);
+
+		printf("typePros_addr at %p\n", typePros_addr);
+
+		MH_CreateHook((LPVOID)typePros_addr, typePros_hook, &typePros_orig);
+		MH_EnableHook((LPVOID)typePros_addr);
+
+		//Type获取property
+
+		auto typePro_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Type", "GetProperty", 1
 		);
 
 		printf("typePro_addr at %p\n", typePro_addr);
@@ -3298,18 +3320,11 @@ namespace
 		MH_CreateHook((LPVOID)typePro_addr, typePro_hook, &typePro_orig);
 		MH_EnableHook((LPVOID)typePro_addr);
 
-		//propertyInfo获取Type
+		printf("Start Get Info\n");
 
-		auto proType_addr = il2cpp_symbols::get_method_pointer(
-			"mscorlib.dll", "System.Reflection",
-			"PropertyInfo", "get_PropertyType", 0
-		);
-
-		printf("proType_addr at %p\n", proType_addr);
-
-		MH_CreateHook((LPVOID)proType_addr, proType_hook, &proType_orig);
-		MH_EnableHook((LPVOID)proType_addr);
-
+		void* assembly = refload_hook((umastring*)il2cpp_symbols::get_string("mscorlib"));
+		void* Global_ProInfo = reftype_hook(assembly, (umastring*)il2cpp_symbols::get_string("System.Reflection.PropertyInfo"));
+		namePro = typePro_hook(Global_ProInfo, il2cpp_symbols::get_string("Name"));
 
 		//执行GUI程序
 		thread([]() {
@@ -3346,19 +3361,19 @@ namespace
 }
 
 static flat_hash_map<void*, ObjectTree> ObjDic;
+static flat_hash_map<void*, ObjectProInfo> ObjProDic;
 static vector<ObjectWindowInfo> ObjWindowList;
 static vector<void*> rootObjList;
 static bool show_info_window = false;
 static void* selected_obj = 0;
 static bool show_active_box = false;
 
-
 //从名称中获取类型名
 string getTypeName(string name) {
 	int left = name.rfind('(') + 1;
 	int right = name.rfind(')');
 
-	return name.substr(left, right-left);
+	return name.substr(left, right - left);
 }
 
 //这边是创建新物体以及直接使用方法的测试，不过暂时用不到
@@ -3385,8 +3400,8 @@ void* getGenericMethod(string dll, string reftype) {
 	printf("Number OK is %d\n", num);
 
 	printf("Create Obj OK at %p\n", obj);
-	
-	
+
+
 	return obj;
 }
 
@@ -3408,7 +3423,7 @@ void refreashObject() {
 		//void* new_list = getGenericMethod("mscorlib", "System.Collections.Generic.List`1[[UnityEngine.Object, UnityEngine]]");
 		void* component = components_hook(gameObj, Component_type);
 		int ComLength = il2cpp_symbols::get_array_length(component);
-		
+
 		vector<void*> components;
 		for (int j = 0; j < ComLength; j++) {
 			components.push_back(arrayindex_hook(component, j));
@@ -3416,7 +3431,7 @@ void refreashObject() {
 
 		//printf("Get Array Success at %p\n", components);
 		//printf("Array Size is %d\n", il2cpp_symbols::get_array_length(components));
-		
+
 		//void* new_list = getGenericMethod("mscorlib", "System.Object");
 		//components_hook(gameObj, Component_type, new_list);
 		//printf("At List Once!");
@@ -3549,9 +3564,7 @@ string getEnumName(void* _class, int id) {
 void getField(void* obj, void* _class) {
 	void* iter = nullptr;
 	void* parent = il2cpp_class_get_parent(_class);
-	if (parent) {
-		getField(obj, parent);
-	}
+
 	bool first = true;
 	while (void* field = il2cpp_class_get_fields(_class, &iter))
 	{
@@ -3580,7 +3593,7 @@ void getField(void* obj, void* _class) {
 			}
 			else if (fieldTypeName == "System.String") {
 				string trueText = UmaGetString((umastring*)value);
-				ImGui::Text(trueText.c_str());
+				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), trueText.c_str());
 			}
 			else if (fieldTypeName == "System.Int32") {
 				int trueInt32 = *((int*)value + 4);
@@ -3612,7 +3625,7 @@ void getField(void* obj, void* _class) {
 				ImGui::Text(trueGuid.c_str());
 			}
 			else if (fieldTypeName == "UnityEngine.Vector2") {
-				float vector[] = {*((float*)value + 4),*((float*)value + 5)};
+				float vector[] = { *((float*)value + 4),*((float*)value + 5) };
 				string vectorName = "##Vector2_" + to_string((int)field);
 				ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
 			}
@@ -3643,18 +3656,35 @@ void getField(void* obj, void* _class) {
 		else {
 			ImGui::TextDisabled("Empty");
 		}
-		
+
+	}
+	if (parent) {
+		getField(obj, parent);
 	}
 }
 
 //递归遍历所有Property
-void getProperty(void* obj, void* _class, int* index) {
+void getProperty(void* obj, void* _class, int* index, void* new_properties, int proLength) {
 	void* iter = nullptr;
 	void* parent = il2cpp_class_get_parent(_class);
-	
+
 	bool first = true;
-	
+
 	while (void* property = il2cpp_class_get_properties(_class, &iter)) {
+
+		if (*index == proLength) {
+			break;
+		}
+
+		string propertyName = il2cpp_property_get_name(property);
+		//printf("Property Name is %s\n", propertyName.c_str());
+		void* pro = arrayindex_hook(new_properties, *index);
+		string trueProName = UmaGetString((umastring*)property_hook(namePro, pro));
+		//printf("New Name is %s\n", trueProName.c_str());
+
+		if (propertyName != trueProName) {
+			continue;
+		}
 
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
@@ -3664,146 +3694,170 @@ void getProperty(void* obj, void* _class, int* index) {
 			first = false;
 		}
 		ImGui::TableSetColumnIndex(1);
-		string propertyName = il2cpp_property_get_name(property);
 		ImGui::Text(propertyName.c_str());
-		
+
+
+
 		MethodInfo* getMethod;
 		if (getMethod = il2cpp_property_get_get_method(property)) {
-			bool close_button = true;
-			string getName = "get##" + to_string((int)property) + "_" + to_string((int)getMethod);
+			//printf("Start Here\n");
 			ImGui::TableSetColumnIndex(2);
 			void* propertyType = nullptr;
 			void* propertyClass = nullptr;
 			string propertyTypeName;
 			propertyType = il2cpp_method_get_return_type(getMethod);
+			//printf("Get Type OK\n");
 			if (propertyType) {
 				propertyTypeName = il2cpp_type_get_name(propertyType);
 				propertyClass = il2cpp_class_from_type(propertyType);
+				//printf("Get Name OK is %s\n", propertyTypeName.c_str());
 				ImGui::Text(propertyTypeName.c_str());
 			}
-			ImGui::TableSetColumnIndex(3);
-			if (getMethod->methodPointer && propertyType) {
-				if (il2cpp_class_is_enum(propertyClass)) {
-					typedef int (*getMethod_t)(void*);
-					int value = ((getMethod_t)getMethod->methodPointer)(obj);
-					string enumName = getEnumName(propertyClass, value);
-					ImGui::Text("%d (%s)", value, enumName.c_str());
+			//printf("Everything OK");
+			//printf("Length is %d, Index is %d\n", proLength, *index);
+			//printf("Pro address is %p\n", pro);
 
+
+			void* value = nullptr;
+
+			bool close_button = true;
+			string getName = "get##" + to_string((int)property) + "_" + to_string((int)index);
+			ImGui::TableSetColumnIndex(3);
+			if (il2cpp_class_is_enum(propertyClass)) {
+				value = property_hook(pro, obj);
+				if (value) {
+					int trueEnumValue = *((int*)value + 4);
+					string trueEnumName = getEnumName(propertyClass, trueEnumValue);
+					ImGui::Text("%d (%s)", trueEnumValue, trueEnumName.c_str());
 				}
-				else if (propertyTypeName == "System.String") {
-					typedef void* (*getMethod_t)(void*);
-					void* value = ((getMethod_t)getMethod->methodPointer)(obj);
-					if (value) {
-						string trueText = UmaGetString((umastring*)value);
-						ImGui::Text(trueText.c_str());
-					}
+			}
+			else if (propertyTypeName == "System.String") {
+				value = property_hook(pro, obj);
+				if (value) {
+					string trueText = UmaGetString((umastring*)value);
+					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), trueText.c_str());
 				}
-				else if (propertyTypeName == "System.Int32") {
-					typedef int (*getMethod_t)(void*);
-					int value = ((getMethod_t)getMethod->methodPointer)(obj);
-					ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.Int32") {
+				value = property_hook(pro, obj);
+				if (value) {
+					int trueInt32 = *((int*)value + 4);
+					ImGui::Text(to_string(trueInt32).c_str());
 				}
-				else if (propertyTypeName == "System.UInt32") {
-					typedef unsigned int (*getMethod_t)(void*);
-					unsigned int value = ((getMethod_t)getMethod->methodPointer)(obj);
-					ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.UInt32") {
+				value = property_hook(pro, obj);
+				if (value) {
+					unsigned int trueUInt32 = *((unsigned int*)value + 4);
+					ImGui::Text(to_string(trueUInt32).c_str());
 				}
-				else if (propertyTypeName == "System.Int64") {
-					typedef long long (*getMethod_t)(void*);
-					long long value = ((getMethod_t)getMethod->methodPointer)(obj);
-					ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.Int64") {
+				value = property_hook(pro, obj);
+				if (value) {
+					size_t trueInt64 = *(size_t*)((int*)value + 4);
+					ImGui::Text("%d", trueInt64);
 				}
-				else if (propertyTypeName == "System.IntPtr") {
-					typedef size_t (*getMethod_t)(void*);
-					size_t trueIntPtr = ((getMethod_t)getMethod->methodPointer)(obj);
+			}
+			else if (propertyTypeName == "System.IntPtr") {
+				value = property_hook(pro, obj);
+				if (value) {
+					size_t trueIntPtr = *(size_t*)((int*)value + 4);
 					ImGui::Text("0X%p", trueIntPtr);
 				}
-				else if (propertyTypeName == "System.Boolean") {
-					typedef bool (*getMethod_t)(void*);
-					bool value = ((getMethod_t)getMethod->methodPointer)(obj);
-					if (value) {
+			}
+			else if (propertyTypeName == "System.Boolean") {
+				value = property_hook(pro, obj);
+				if (value) {
+					bool trueBoolean = *(bool*)((int*)value + 4);
+					if (trueBoolean) {
 						ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
 					}
 					else {
 						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
 					}
 				}
-				else if (propertyTypeName == "System.Single") {
-					typedef float (*getMethod_t)(void*);
-					float value = ((getMethod_t)getMethod->methodPointer)(obj);
-					ImGui::Text(to_string(value).c_str());
+			}
+			else if (propertyTypeName == "System.Single") {
+				value = property_hook(pro, obj);
+				if (value) {
+					float trueSingle = *(float*)((int*)value + 4);
+					ImGui::Text(to_string(trueSingle).c_str());
 				}
-				//获取属性的GUID大失败
-				else if (propertyTypeName == "UnityEngine.Vector2") {
-					typedef Vector2(*getMethod_t)(void*);
-					Vector2 value = ((getMethod_t)getMethod->methodPointer)(obj);
-					float vector[] = { value.x, value.y };
+			}
+			else if (propertyTypeName == "System.Guid") {
+				value = property_hook(pro, obj);
+				if (value) {
+					string trueGuid = UmaGetString(guid_hook(value));
+					ImGui::Text(trueGuid.c_str());
+				}
+			}
+			
+			else if (propertyTypeName == "UnityEngine.Vector2") {
+				value = property_hook(pro, obj);
+				if (value) {
+					float vector[] = { *((float*)value + 4),*((float*)value + 5) };
 					string vectorName = "##Vector2_" + to_string((int)property);
 					ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
 				}
-				else if (propertyTypeName == "UnityEngine.Vector3") {
-					typedef Vector3(*getMethod_t)(void*);
-					Vector3 value = ((getMethod_t)getMethod->methodPointer)(obj);
-					float vector[] = { value.x, value.y, value.z };
+			}
+			else if (propertyTypeName == "UnityEngine.Vector3") {
+				value = property_hook(pro, obj);
+				if (value) {
+					float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6) };
 					string vectorName = "##Vector3_" + to_string((int)property);
 					ImGui::InputFloat3(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
 				}
-				else if (propertyTypeName == "UnityEngine.Vector4" or propertyTypeName == "UnityEngine.Quaternion") {
-					typedef Quaternion(*getMethod_t)(void*);
-					Quaternion value = ((getMethod_t)getMethod->methodPointer)(obj);
-					float vector[] = { value.x, value.y, value.z, value.w };
+			}
+			else if (propertyTypeName == "UnityEngine.Vector4" or propertyTypeName == "UnityEngine.Quaternion") {
+				value = property_hook(pro, obj);
+				if (value) {
+					float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6), *((float*)value + 7) };
 					string vectorName = "##Vector4_" + to_string((int)property);
 					ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
 				}
-				else {
-					close_button = false;
-				}
+			}
+			else {
+				close_button = false;
 			}
 			ImGui::TableSetColumnIndex(4);
 			ImGui::BeginDisabled(close_button);
 			if (ImGui::Button(getName.c_str())) {
 
-				//由于各种特殊原因，获取property必须这么做
-				//printf("Start Get\n");
-				void* new_type = objType_hook(obj);
-				//printf("New Type is %p\n", new_type);
-				void* new_properties = typePro_hook(new_type);
-				//printf("New Pro is %p\n", new_properties);
-				int proLength = il2cpp_symbols::get_array_length(new_properties);
-				//printf("Length is %d, Index is %d\n", proLength, *index);
-				void* pro = arrayindex_hook(new_properties, *index);
-				//printf("Pro address is %p\n", pro);
-				void* value = property_hook(pro, obj);
-				//printf("Result is %p\n", value);
-				//void* valueClass = il2cpp_object_get_class(value);
-				//printf("valueClass is %p\n", valueClass);
-				//void* valueType = il2cpp_class_get_type(valueClass);
-				//printf("valueType is %p\n", valueType);
-				//string valueTypeName = il2cpp_type_get_name(valueType);
-				//printf("valueTypeName is %s\n", valueTypeName.c_str());
-
-				//typedef void* (*getMethod_t)(void*);
-				//value = ((getMethod_t)getMethod->methodPointer)(obj);
-				//printf("Get OK is %p\n", value);
-				if (value) {
-					ObjectWindowInfo objInfo;
-					objInfo.obj = value;
-					objInfo._class = propertyClass;
-					objInfo.state = true;
-					objInfo.name = propertyTypeName;
-					ObjWindowList.push_back(objInfo);
+				try {
+					value = property_hook(pro, obj);
+					if (value) {
+						void* valueClass = il2cpp_object_get_class(value);
+						//printf("valueClass is %p\n", valueClass);
+						void* valueType = il2cpp_class_get_type(valueClass);
+						//printf("valueType is %p\n", valueType);
+						string valueTypeName = il2cpp_type_get_name(valueType);
+						//printf("valueTypeName is %s\n", valueTypeName.c_str());
+						ObjectWindowInfo objInfo;
+						objInfo.obj = value;
+						objInfo._class = valueClass;
+						objInfo.state = true;
+						objInfo.name = valueTypeName;
+						ObjWindowList.push_back(objInfo);
+					}
+					else {
+						ImGui::TableSetColumnIndex(3);
+						ImGui::TextDisabled("Empty");
+						ImGui::TableSetColumnIndex(4);
+					}
 				}
-				else {
-					printf("Object not Exist!\n");
+				catch (...) {
+					ImGui::TableSetColumnIndex(3);
+					ImGui::TextDisabled("Error");
+					ImGui::TableSetColumnIndex(4);
 				}
-				
 			}
 			ImGui::SameLine();
 			ImGui::EndDisabled();
 		}
 		MethodInfo* setMethod;
 		if (setMethod = il2cpp_property_get_set_method(property)) {
-			string setName = "set##" + to_string((int)property) + "_" + to_string((int)setMethod);
+			string setName = "set##" + to_string((int)property) + "_" + to_string((int)index);
 			ImGui::TableSetColumnIndex(4);
 			ImGui::BeginDisabled();
 			if (ImGui::Button(setName.c_str())) {
@@ -3811,10 +3865,11 @@ void getProperty(void* obj, void* _class, int* index) {
 			}
 			ImGui::EndDisabled();
 		}
+		//printf("OK %s\n", propertyName.c_str());
 		*index += 1;
 	}
 	if (parent) {
-		getProperty(obj, parent, index);
+		getProperty(obj, parent, index, new_properties, proLength);
 	}
 }
 
@@ -3847,6 +3902,16 @@ void getPropertyWindow(void* obj, void* _class, int i = 0) {
 
 	string componentProperty = to_string(int(obj)) + "_property_" + to_string(i);
 	if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
+		if (!ObjProDic.count(obj)) {
+			ObjectProInfo proInfo;
+			proInfo.type = objType_hook(obj);
+			proInfo.properties = typePros_hook(proInfo.type);
+			proInfo.proLength = il2cpp_symbols::get_array_length(proInfo.properties);
+			ObjProDic[obj] = proInfo;
+		}
+
+
+
 		if (ImGui::BeginTable((componentProperty + "_table").c_str(), 5, flags)) {
 			ImGui::TableSetupColumn("Class Name");
 			ImGui::TableSetupColumn("Property Name");
@@ -3856,7 +3921,8 @@ void getPropertyWindow(void* obj, void* _class, int i = 0) {
 			ImGui::TableHeadersRow();
 
 			int index = 0;
-			getProperty(obj, _class, &index);
+
+			getProperty(obj, _class, &index, ObjProDic[obj].properties, ObjProDic[obj].proLength);
 
 			ImGui::EndTable();
 		}
@@ -3875,7 +3941,7 @@ void show_components(void* currentObj) {
 			void* _class = il2cpp_symbols::object_get_class(components[i]);
 
 			getFieldWindow(components[i], _class, i);
-			
+
 			getPropertyWindow(components[i], _class, i);
 
 			ImGui::TreePop();
@@ -3906,6 +3972,9 @@ void createObjWindows() {
 			auto it = ObjWindowList.begin();
 			ObjWindowList.erase(it + i);
 			objWindowListSize -= 1;
+			if (ObjProDic.count(objWindow->obj)) {
+				ObjProDic.erase(objWindow->obj);
+			}
 		}
 	}
 }
@@ -4030,7 +4099,7 @@ int imguiwindow()
 			if (ImGui::Button("GetObjDic"))                           // Buttons return true when clicked (most widgets return true when edited/activated)
 			{
 				refreashObject();
-				
+
 				//getGenericMethod("mscorlib", "System.Collections.Generic.List`1[[UnityEngine.Component, UnityEngine]]");
 				//getGenericMethod("mscorlib", "System.Int32");
 
@@ -4042,16 +4111,16 @@ int imguiwindow()
 				printf("Get Class OK at %p\n", c_class);
 				void* c_array = il2cpp_symbols::new_array(c_class, 0);
 				printf("Get Array OK at %p\n", c_array);
-				
+
 				int c_size = il2cpp_symbols::get_array_length(c_array);
 				printf("Get Size OK is %d\n", c_size);
-				
+
 				printf("Obj OK at %p\n", c_type);
 				arrayset_hook(c_array, c_type, 0);
 				printf("Set Array OK\n");
 				void* c_result = arrayindex_hook(c_array, 0);
 				printf("Get Obj OK is %p\n", c_result);
-				
+
 				void* c_method = refmethod_hook(c_type, (umastring*)il2cpp_symbols::get_string("GetComponent"), c_array);
 				printf("Get Method OK is %p\n", c_method);
 				*/
@@ -4110,7 +4179,7 @@ int imguiwindow()
 				*/
 			}
 
-			
+
 			ImGui::End();
 		}
 
