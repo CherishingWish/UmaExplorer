@@ -105,6 +105,12 @@ struct Vector3 // TypeDefIndex: 2063
 	float z; // 0x8
 };
 
+struct Vector2 // TypeDefIndex: 2063
+{
+	float x; // 0x0
+	float y; // 0x4
+};
+
 struct Quaternion // TypeDefIndex: 2064
 {
 	// Fields
@@ -639,6 +645,14 @@ struct ObjectTree
 	bool activeInHierarchy;
 };
 
+struct ObjectWindowInfo 
+{
+	void* obj;
+	void* _class;
+	bool state;
+	string name;
+};
+
 namespace
 {
 
@@ -972,6 +986,39 @@ namespace
 	{
 
 		umastring* ret = reinterpret_cast<decltype(guid_hook)*>(guid_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* property_orig = nullptr;
+
+	void* property_hook(void* _this, void* obj)
+	{
+
+		void* ret = reinterpret_cast<decltype(property_hook)*>(property_orig)(_this, obj);
+
+		return ret;
+
+	}
+
+	void* typePro_orig = nullptr;
+
+	void* typePro_hook(void* _this)
+	{
+
+		void* ret = reinterpret_cast<decltype(typePro_hook)*>(typePro_orig)(_this);
+
+		return ret;
+
+	}
+
+	void* proType_orig = nullptr;
+
+	void* proType_hook(void* _this)
+	{
+
+		void* ret = reinterpret_cast<decltype(proType_hook)*>(proType_orig)(_this);
 
 		return ret;
 
@@ -3227,6 +3274,42 @@ namespace
 		MH_CreateHook((LPVOID)guid_addr, guid_hook, &guid_orig);
 		MH_EnableHook((LPVOID)guid_addr);
 
+		//根据PropertyInfo获取值
+
+		auto property_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Reflection",
+			"PropertyInfo", "GetValue", 1
+		);
+
+		printf("property_addr at %p\n", property_addr);
+
+		MH_CreateHook((LPVOID)property_addr, property_hook, &property_orig);
+		MH_EnableHook((LPVOID)property_addr);
+
+		//Type获取properties
+
+		auto typePro_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System",
+			"Type", "GetProperties", 0
+		);
+
+		printf("typePro_addr at %p\n", typePro_addr);
+
+		MH_CreateHook((LPVOID)typePro_addr, typePro_hook, &typePro_orig);
+		MH_EnableHook((LPVOID)typePro_addr);
+
+		//propertyInfo获取Type
+
+		auto proType_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Reflection",
+			"PropertyInfo", "get_PropertyType", 0
+		);
+
+		printf("proType_addr at %p\n", proType_addr);
+
+		MH_CreateHook((LPVOID)proType_addr, proType_hook, &proType_orig);
+		MH_EnableHook((LPVOID)proType_addr);
+
 
 		//执行GUI程序
 		thread([]() {
@@ -3263,6 +3346,7 @@ namespace
 }
 
 static flat_hash_map<void*, ObjectTree> ObjDic;
+static vector<ObjectWindowInfo> ObjWindowList;
 static vector<void*> rootObjList;
 static bool show_info_window = false;
 static void* selected_obj = 0;
@@ -3527,6 +3611,34 @@ void getField(void* obj, void* _class) {
 				string trueGuid = UmaGetString(guid_hook(value));
 				ImGui::Text(trueGuid.c_str());
 			}
+			else if (fieldTypeName == "UnityEngine.Vector2") {
+				float vector[] = {*((float*)value + 4),*((float*)value + 5)};
+				string vectorName = "##Vector2_" + to_string((int)field);
+				ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			}
+			else if (fieldTypeName == "UnityEngine.Vector3") {
+				float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6) };
+				string vectorName = "##Vector3_" + to_string((int)field);
+				ImGui::InputFloat3(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			}
+			else if (fieldTypeName == "UnityEngine.Vector4" or fieldTypeName == "UnityEngine.Quaternion") {
+				float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6), *((float*)value + 7) };
+				string vectorName = "##Vector4_" + to_string((int)field);
+				ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			}
+			else {
+				ImGui::Text("0X%p", value);
+				ImGui::SameLine();
+				string objButtonName = "View##" + to_string((int)field) + "_" + to_string((int)value);
+				if (ImGui::Button(objButtonName.c_str())) {
+					ObjectWindowInfo objInfo;
+					objInfo.obj = value;
+					objInfo._class = fieldClass;
+					objInfo.state = true;
+					objInfo.name = fieldTypeName;
+					ObjWindowList.push_back(objInfo);
+				}
+			}
 		}
 		else {
 			ImGui::TextDisabled("Empty");
@@ -3536,13 +3648,12 @@ void getField(void* obj, void* _class) {
 }
 
 //递归遍历所有Property
-void getProperty(void* obj, void* _class) {
+void getProperty(void* obj, void* _class, int* index) {
 	void* iter = nullptr;
 	void* parent = il2cpp_class_get_parent(_class);
-	if (parent) {
-		getProperty(obj, parent);
-	}
+	
 	bool first = true;
+	
 	while (void* property = il2cpp_class_get_properties(_class, &iter)) {
 
 		ImGui::TableNextRow();
@@ -3555,82 +3666,202 @@ void getProperty(void* obj, void* _class) {
 		ImGui::TableSetColumnIndex(1);
 		string propertyName = il2cpp_property_get_name(property);
 		ImGui::Text(propertyName.c_str());
-		ImGui::TableSetColumnIndex(4);
+		
 		MethodInfo* getMethod;
 		if (getMethod = il2cpp_property_get_get_method(property)) {
-			if (ImGui::Button("get")) {
+			bool close_button = true;
+			string getName = "get##" + to_string((int)property) + "_" + to_string((int)getMethod);
+			ImGui::TableSetColumnIndex(2);
+			void* propertyType = nullptr;
+			void* propertyClass = nullptr;
+			string propertyTypeName;
+			propertyType = il2cpp_method_get_return_type(getMethod);
+			if (propertyType) {
+				propertyTypeName = il2cpp_type_get_name(propertyType);
+				propertyClass = il2cpp_class_from_type(propertyType);
+				ImGui::Text(propertyTypeName.c_str());
+			}
+			ImGui::TableSetColumnIndex(3);
+			if (getMethod->methodPointer && propertyType) {
+				if (il2cpp_class_is_enum(propertyClass)) {
+					typedef int (*getMethod_t)(void*);
+					int value = ((getMethod_t)getMethod->methodPointer)(obj);
+					string enumName = getEnumName(propertyClass, value);
+					ImGui::Text("%d (%s)", value, enumName.c_str());
 
+				}
+				else if (propertyTypeName == "System.String") {
+					typedef void* (*getMethod_t)(void*);
+					void* value = ((getMethod_t)getMethod->methodPointer)(obj);
+					if (value) {
+						string trueText = UmaGetString((umastring*)value);
+						ImGui::Text(trueText.c_str());
+					}
+				}
+				else if (propertyTypeName == "System.Int32") {
+					typedef int (*getMethod_t)(void*);
+					int value = ((getMethod_t)getMethod->methodPointer)(obj);
+					ImGui::Text(to_string(value).c_str());
+				}
+				else if (propertyTypeName == "System.UInt32") {
+					typedef unsigned int (*getMethod_t)(void*);
+					unsigned int value = ((getMethod_t)getMethod->methodPointer)(obj);
+					ImGui::Text(to_string(value).c_str());
+				}
+				else if (propertyTypeName == "System.Int64") {
+					typedef long long (*getMethod_t)(void*);
+					long long value = ((getMethod_t)getMethod->methodPointer)(obj);
+					ImGui::Text(to_string(value).c_str());
+				}
+				else if (propertyTypeName == "System.IntPtr") {
+					typedef size_t (*getMethod_t)(void*);
+					size_t trueIntPtr = ((getMethod_t)getMethod->methodPointer)(obj);
+					ImGui::Text("0X%p", trueIntPtr);
+				}
+				else if (propertyTypeName == "System.Boolean") {
+					typedef bool (*getMethod_t)(void*);
+					bool value = ((getMethod_t)getMethod->methodPointer)(obj);
+					if (value) {
+						ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
+					}
+					else {
+						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
+					}
+				}
+				else if (propertyTypeName == "System.Single") {
+					typedef float (*getMethod_t)(void*);
+					float value = ((getMethod_t)getMethod->methodPointer)(obj);
+					ImGui::Text(to_string(value).c_str());
+				}
+				//获取属性的GUID大失败
+				else if (propertyTypeName == "UnityEngine.Vector2") {
+					typedef Vector2(*getMethod_t)(void*);
+					Vector2 value = ((getMethod_t)getMethod->methodPointer)(obj);
+					float vector[] = { value.x, value.y };
+					string vectorName = "##Vector2_" + to_string((int)property);
+					ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+				}
+				else if (propertyTypeName == "UnityEngine.Vector3") {
+					typedef Vector3(*getMethod_t)(void*);
+					Vector3 value = ((getMethod_t)getMethod->methodPointer)(obj);
+					float vector[] = { value.x, value.y, value.z };
+					string vectorName = "##Vector3_" + to_string((int)property);
+					ImGui::InputFloat3(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+				}
+				else if (propertyTypeName == "UnityEngine.Vector4" or propertyTypeName == "UnityEngine.Quaternion") {
+					typedef Quaternion(*getMethod_t)(void*);
+					Quaternion value = ((getMethod_t)getMethod->methodPointer)(obj);
+					float vector[] = { value.x, value.y, value.z, value.w };
+					string vectorName = "##Vector4_" + to_string((int)property);
+					ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+				}
+				else {
+					close_button = false;
+				}
+			}
+			ImGui::TableSetColumnIndex(4);
+			ImGui::BeginDisabled(close_button);
+			if (ImGui::Button(getName.c_str())) {
+
+				//由于各种特殊原因，获取property必须这么做
+				//printf("Start Get\n");
+				void* new_type = objType_hook(obj);
+				//printf("New Type is %p\n", new_type);
+				void* new_properties = typePro_hook(new_type);
+				//printf("New Pro is %p\n", new_properties);
+				int proLength = il2cpp_symbols::get_array_length(new_properties);
+				//printf("Length is %d, Index is %d\n", proLength, *index);
+				void* pro = arrayindex_hook(new_properties, *index);
+				//printf("Pro address is %p\n", pro);
+				void* value = property_hook(pro, obj);
+				//printf("Result is %p\n", value);
+				//void* valueClass = il2cpp_object_get_class(value);
+				//printf("valueClass is %p\n", valueClass);
+				//void* valueType = il2cpp_class_get_type(valueClass);
+				//printf("valueType is %p\n", valueType);
+				//string valueTypeName = il2cpp_type_get_name(valueType);
+				//printf("valueTypeName is %s\n", valueTypeName.c_str());
+
+				//typedef void* (*getMethod_t)(void*);
+				//value = ((getMethod_t)getMethod->methodPointer)(obj);
+				//printf("Get OK is %p\n", value);
+				if (value) {
+					ObjectWindowInfo objInfo;
+					objInfo.obj = value;
+					objInfo._class = propertyClass;
+					objInfo.state = true;
+					objInfo.name = propertyTypeName;
+					ObjWindowList.push_back(objInfo);
+				}
+				else {
+					printf("Object not Exist!\n");
+				}
+				
 			}
 			ImGui::SameLine();
+			ImGui::EndDisabled();
 		}
 		MethodInfo* setMethod;
 		if (setMethod = il2cpp_property_get_set_method(property)) {
+			string setName = "set##" + to_string((int)property) + "_" + to_string((int)setMethod);
+			ImGui::TableSetColumnIndex(4);
 			ImGui::BeginDisabled();
-			if (ImGui::Button("set")) {
+			if (ImGui::Button(setName.c_str())) {
 
 			}
 			ImGui::EndDisabled();
 		}
-		ImGui::TableSetColumnIndex(2);
-		void* propertyType = nullptr;
-		string propertyTypeName;
-		if (getMethod) {
-			propertyType = il2cpp_method_get_return_type(getMethod);
-			if (propertyType) {
-				propertyTypeName = il2cpp_type_get_name(propertyType);
-				ImGui::Text(propertyTypeName.c_str());
-			}
+		*index += 1;
+	}
+	if (parent) {
+		getProperty(obj, parent, index);
+	}
+}
+
+//创建FieldWindow
+void getFieldWindow(void* obj, void* _class, int i = 0) {
+	ImGuiTableFlags flags = 1;
+
+	//开始Field处理
+
+	string componentField = to_string(int(obj)) + "_field_" + to_string(i);
+	if (ImGui::TreeNode((componentField + "_tree").c_str(), "Field")) {
+		if (ImGui::BeginTable((componentField + "_table").c_str(), 4, flags)) {
+			ImGui::TableSetupColumn("Class Name");
+			ImGui::TableSetupColumn("Field Name");
+			ImGui::TableSetupColumn("Field Type");
+			ImGui::TableSetupColumn("Field Value");
+			ImGui::TableHeadersRow();
+
+			getField(obj, _class);
+
+			ImGui::EndTable();
 		}
-		ImGui::TableSetColumnIndex(3);
-		if (getMethod && getMethod->methodPointer && propertyType) {
-			void* propertyClass = il2cpp_class_from_type(propertyType);
-			if (il2cpp_class_is_enum(propertyClass)) {
-				typedef int (*getMethod_t)(void*);
-				int value = ((getMethod_t)getMethod->methodPointer)(obj);
-				string enumName = getEnumName(propertyClass, value);
-				ImGui::Text("%d (%s)", value, enumName.c_str());
-				
-			}
-			if (propertyTypeName == "System.String") {
-				typedef void* (*getMethod_t)(void*);
-				void* value = ((getMethod_t)getMethod->methodPointer)(obj);
-				if (value) {
-					string trueText = UmaGetString((umastring*)value);
-					ImGui::Text(trueText.c_str());
-				}
-			}
-			else if(propertyTypeName == "System.Int32"){
-				typedef int (*getMethod_t)(void*);
-				int value = ((getMethod_t)getMethod->methodPointer)(obj);
-				ImGui::Text(to_string(value).c_str());
-			}
-			else if (propertyTypeName == "System.UInt32") {
-				typedef unsigned int (*getMethod_t)(void*);
-				unsigned int value = ((getMethod_t)getMethod->methodPointer)(obj);
-				ImGui::Text(to_string(value).c_str());
-			}
-			else if (propertyTypeName == "System.Int64") {
-				typedef long long (*getMethod_t)(void*);
-				long long value = ((getMethod_t)getMethod->methodPointer)(obj);
-				ImGui::Text(to_string(value).c_str());
-			}
-			else if (propertyTypeName == "System.Boolean") {
-				typedef bool (*getMethod_t)(void*);
-				bool value = ((getMethod_t)getMethod->methodPointer)(obj);
-				if (value) {
-					ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
-				}
-				else {
-					ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
-				}
-			}
-			else if (propertyTypeName == "System.Single") {
-				typedef float (*getMethod_t)(void*);
-				float value = ((getMethod_t)getMethod->methodPointer)(obj);
-				ImGui::Text(to_string(value).c_str());
-			}
-			//获取属性的GUID大失败
+		ImGui::TreePop();
+	}
+}
+
+//创建PropertyWindow
+void getPropertyWindow(void* obj, void* _class, int i = 0) {
+	ImGuiTableFlags flags = 1;
+
+	string componentProperty = to_string(int(obj)) + "_property_" + to_string(i);
+	if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
+		if (ImGui::BeginTable((componentProperty + "_table").c_str(), 5, flags)) {
+			ImGui::TableSetupColumn("Class Name");
+			ImGui::TableSetupColumn("Property Name");
+			ImGui::TableSetupColumn("Property Type");
+			ImGui::TableSetupColumn("Property Value");
+			ImGui::TableSetupColumn("Property Method");
+			ImGui::TableHeadersRow();
+
+			int index = 0;
+			getProperty(obj, _class, &index);
+
+			ImGui::EndTable();
 		}
+
+		ImGui::TreePop();
 	}
 }
 
@@ -3642,50 +3873,40 @@ void show_components(void* currentObj) {
 	for (int i = 0; i < components.size(); i++) {
 		if (ImGui::TreeNode(components[i], getTypeName(UmaGetString(objectname_hook(components[i]))).c_str())) {
 			void* _class = il2cpp_symbols::object_get_class(components[i]);
+
+			getFieldWindow(components[i], _class, i);
 			
-			ImGuiTableFlags flags = 1;
-
-			//开始Field处理
-			
-			string componentField = to_string(int(components[i])) + "_field_" + to_string(i);
-			if (ImGui::TreeNode((componentField+"_tree").c_str(), "Field")) {
-				if (ImGui::BeginTable((componentField+"_table").c_str(), 4, flags)) {
-					ImGui::TableSetupColumn("Class Name");
-					ImGui::TableSetupColumn("Field Name");
-					ImGui::TableSetupColumn("Field Type");
-					ImGui::TableSetupColumn("Field Value");
-					ImGui::TableHeadersRow();
-
-					getField(components[i], _class);
-
-					ImGui::EndTable();
-				}
-				ImGui::TreePop();
-			}
-			
-			//开始Property处理
-
-			string componentProperty = to_string(int(components[i])) + "_property_" + to_string(i);
-			if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
-				if (ImGui::BeginTable((componentProperty + "_table").c_str(), 5, flags)) {
-					ImGui::TableSetupColumn("Class Name");
-					ImGui::TableSetupColumn("Property Name");
-					ImGui::TableSetupColumn("Property Type");
-					ImGui::TableSetupColumn("Property Value");
-					ImGui::TableSetupColumn("Property Method");
-					ImGui::TableHeadersRow();
-
-					getProperty(components[i], _class);
-
-					ImGui::EndTable();
-				}
-
-				ImGui::TreePop();
-			}
-			
+			getPropertyWindow(components[i], _class, i);
 
 			ImGui::TreePop();
 		};
+	}
+}
+
+//根据字典的内容创建目标Object窗口
+void createObjWindows() {
+	int objWindowListSize = ObjWindowList.size();
+	for (int i = 0; i < objWindowListSize; ) {
+		ObjectWindowInfo* objWindow = &ObjWindowList[i];
+		if (objWindow->state) {
+			if (*(long long*)objWindow->obj != 0) {
+				ImGui::Begin(("Object Window##" + to_string((int)objWindow->obj)).c_str(), &objWindow->state);
+				ImGui::Text(("Object Type: " + objWindow->name).c_str());
+				//printf("%s\n", objWindow->name.c_str());
+				getFieldWindow(objWindow->obj, objWindow->_class);
+				getPropertyWindow(objWindow->obj, objWindow->_class);
+				ImGui::End();
+			}
+			else {
+				objWindow->state = false;
+			}
+			i++;
+		}
+		else {
+			auto it = ObjWindowList.begin();
+			ObjWindowList.erase(it + i);
+			objWindowListSize -= 1;
+		}
 	}
 }
 
@@ -3914,6 +4135,8 @@ int imguiwindow()
 				refreashObject();
 			}
 		}
+
+		createObjWindows();
 
 
 		// Rendering
