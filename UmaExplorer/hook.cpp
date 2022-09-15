@@ -76,6 +76,7 @@ char file_fps[100];
 static void* Global_ProInfo;
 static void* namePro;
 
+
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
 
@@ -654,6 +655,14 @@ struct ObjectWindowInfo
 	void* _class;
 	bool state;
 	string name;
+	string typeName;
+};
+
+struct ArrayWindowInfo
+{
+	void* obj;
+	bool state;
+	string typeName;
 };
 
 struct ObjectProInfo
@@ -1015,10 +1024,10 @@ namespace
 
 	void* typePros_orig = nullptr;
 
-	void* typePros_hook(void* _this)
+	void* typePros_hook(void* _this, int flag)
 	{
 
-		void* ret = reinterpret_cast<decltype(typePros_hook)*>(typePros_orig)(_this);
+		void* ret = reinterpret_cast<decltype(typePros_hook)*>(typePros_orig)(_this, flag);
 
 		return ret;
 
@@ -1032,6 +1041,25 @@ namespace
 		void* ret = reinterpret_cast<decltype(typePro_hook)*>(typePro_orig)(_this, name);
 
 		return ret;
+
+	}
+
+	void* time_orig = nullptr;
+
+	void time_hook(float value)
+	{
+
+		reinterpret_cast<decltype(time_hook)*>(time_orig)(value);
+
+	}
+
+	void* break_orig = nullptr;
+
+	void break_hook(int millisecondsTimeout)
+	{
+
+		reinterpret_cast<decltype(break_hook)*>(break_orig)(millisecondsTimeout);
+
 
 	}
 
@@ -3301,7 +3329,7 @@ namespace
 
 		auto typePros_addr = il2cpp_symbols::get_method_pointer(
 			"mscorlib.dll", "System",
-			"Type", "GetProperties", 0
+			"RuntimeType", "GetProperties", 1
 		);
 
 		printf("typePros_addr at %p\n", typePros_addr);
@@ -3321,11 +3349,38 @@ namespace
 		MH_CreateHook((LPVOID)typePro_addr, typePro_hook, &typePro_orig);
 		MH_EnableHook((LPVOID)typePro_addr);
 
+		//尝试暂停游戏
+
+		auto time_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Time", "set_timeScale", 1
+		);
+
+		printf("time_addr at %p\n", time_addr);
+
+		MH_CreateHook((LPVOID)time_addr, time_hook, &time_orig);
+		MH_EnableHook((LPVOID)time_addr);
+
+		//尝试暂停游戏2
+
+		auto break_addr = il2cpp_symbols::get_method_pointer(
+			"mscorlib.dll", "System.Threading",
+			"Thread", "Sleep", 1
+		);
+
+		printf("break_addr at %p\n", break_addr);
+
+		MH_CreateHook((LPVOID)break_addr, break_hook, &break_orig);
+		MH_EnableHook((LPVOID)break_addr);
+
+
 		printf("Start Get Info\n");
 
 		void* assembly = refload_hook((umastring*)il2cpp_symbols::get_string("mscorlib"));
 		void* Global_ProInfo = reftype_hook(assembly, (umastring*)il2cpp_symbols::get_string("System.Reflection.PropertyInfo"));
 		namePro = typePro_hook(Global_ProInfo, il2cpp_symbols::get_string("Name"));
+
+		
 
 		//执行GUI程序
 		thread([]() {
@@ -3364,6 +3419,7 @@ namespace
 static flat_hash_map<void*, ObjectTree> ObjDic;
 static flat_hash_map<void*, ObjectProInfo> ObjProDic;
 static vector<ObjectWindowInfo> ObjWindowList;
+static vector<ArrayWindowInfo> ArrayWindowList;
 static vector<void*> rootObjList;
 static bool show_info_window = false;
 static void* selected_obj = 0;
@@ -3375,6 +3431,11 @@ string getTypeName(string name) {
 	int right = name.rfind(')');
 
 	return name.substr(left, right - left);
+}
+
+string delArrayName(string name) {
+	int left = name.rfind('[');
+	return name.substr(0, left);
 }
 
 //这边是创建新物体以及直接使用方法的测试，不过暂时用不到
@@ -3645,12 +3706,33 @@ void getField(void* obj, void* _class) {
 				ImGui::SameLine();
 				string objButtonName = "View##" + to_string((int)field) + "_" + to_string((int)value);
 				if (ImGui::Button(objButtonName.c_str())) {
-					ObjectWindowInfo objInfo;
-					objInfo.obj = value;
-					objInfo._class = fieldClass;
-					objInfo.state = true;
-					objInfo.name = fieldTypeName;
-					ObjWindowList.push_back(objInfo);
+					string::size_type idx;
+					idx = fieldTypeName.find("[]");
+					if (idx == string::npos) {
+						ObjectWindowInfo objInfo;
+						objInfo.obj = value;
+						objInfo._class = fieldClass;
+						objInfo.state = true;
+						if (ObjDic.count(value)) {
+							objInfo.name = ObjDic[value].name;
+						}
+						else {
+							objInfo.name = "";
+						}
+						objInfo.typeName = fieldTypeName;
+						ObjWindowList.push_back(objInfo);
+
+					}
+					else {
+						printf("This is a Array!\n");
+						printf("Array Length is %d\n", il2cpp_array_length(value));
+
+						ArrayWindowInfo arrayInfo;
+						arrayInfo.obj = value;
+						arrayInfo.typeName = delArrayName(fieldTypeName);
+						arrayInfo.state = true;
+						ArrayWindowList.push_back(arrayInfo);
+					}
 				}
 			}
 		}
@@ -3685,9 +3767,7 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 		string trueProName = propertyList[*index];
 		//printf("New Name is %s\n", trueProName.c_str());
 
-		if (propertyName != trueProName) {
-			continue;
-		}
+		
 
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
@@ -3698,8 +3778,6 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 		}
 		ImGui::TableSetColumnIndex(1);
 		ImGui::Text(propertyName.c_str());
-
-
 
 		MethodInfo* getMethod;
 		if (getMethod = il2cpp_property_get_get_method(property)) {
@@ -3720,6 +3798,9 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 			//printf("Length is %d, Index is %d\n", proLength, *index);
 			//printf("Pro address is %p\n", pro);
 
+			if (propertyName != trueProName) {
+				continue;
+			}
 
 			void* value = nullptr;
 
@@ -3822,6 +3903,8 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 					}
 				}
 				else {
+					//value = property_hook(pro, obj);
+					//ImGui::Text("0X%p", value);
 					close_button = false;
 				}
 				ImGui::TableSetColumnIndex(4);
@@ -3841,7 +3924,13 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 							objInfo.obj = value;
 							objInfo._class = valueClass;
 							objInfo.state = true;
-							objInfo.name = valueTypeName;
+							if (ObjDic.count(value)) {
+								objInfo.name = ObjDic[value].name;
+							}
+							else {
+								objInfo.name = "";
+							}
+							objInfo.typeName = valueTypeName;
 							ObjWindowList.push_back(objInfo);
 						}
 						else {
@@ -3885,6 +3974,9 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 			ImGui::EndDisabled();
 		}
 		//printf("OK %s\n", propertyName.c_str());
+		if (propertyName != trueProName) {
+			continue;
+		}
 		*index += 1;
 	}
 	if (parent) {
@@ -3928,7 +4020,7 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 		if (!ObjProDic.count(obj)) {
 			ObjectProInfo proInfo;
 			proInfo.type = objType_hook(obj);
-			void* tempProperties = typePros_hook(proInfo.type);
+			void* tempProperties = typePros_hook(proInfo.type, 4|8|16|32);
 			proInfo.proLength = il2cpp_symbols::get_array_length(tempProperties);
 
 			vector<string> proNameList;
@@ -4002,7 +4094,8 @@ void createObjWindows() {
 		if (objWindow->state) {
 			if (*(long long*)objWindow->obj != 0) {
 				ImGui::Begin(("Object Window##" + to_string((int)objWindow->obj)).c_str(), &objWindow->state);
-				ImGui::Text(("Object Type: " + objWindow->name).c_str());
+				ImGui::Text(("Object Name: " + objWindow->name).c_str());
+				ImGui::Text(("Object Type: " + objWindow->typeName).c_str());
 				//printf("%s\n", objWindow->name.c_str());
 				getFieldWindow(objWindow->obj, objWindow->_class);
 				getPropertyWindow(objWindow->obj, objWindow->_class, objWindow);
@@ -4020,6 +4113,97 @@ void createObjWindows() {
 			if (ObjProDic.count(objWindow->obj)) {
 				ObjProDic.erase(objWindow->obj);
 			}
+		}
+	}
+}
+
+void showArray(int index, void* value, ArrayWindowInfo* arrayWindow) {
+	ImGui::TableNextRow();
+	ImGui::TableSetColumnIndex(0);
+	ImGui::Text("%d", index);
+	ImGui::TableSetColumnIndex(1);
+	ImGui::Text("%p", value);
+	ImGui::SameLine();
+	string arrayButtonName = "View##" + to_string((int)value) + "_" + to_string((int)index);
+	if (ImGui::Button(arrayButtonName.c_str())) {
+
+		void* valueClass = il2cpp_object_get_class(value);
+		//printf("valueClass is %p\n", valueClass);
+		void* valueType = il2cpp_class_get_type(valueClass);
+		//printf("valueType is %p\n", valueType);
+		string valueTypeName = il2cpp_type_get_name(valueType);
+		//printf("valueTypeName is %s\n", valueTypeName.c_str());
+
+		string::size_type idx;
+		idx = arrayWindow->typeName.find("[]");
+		if (idx == string::npos) {
+			ObjectWindowInfo objInfo;
+			objInfo.obj = value;
+			objInfo._class = valueClass;
+			objInfo.state = true;
+			if (ObjDic.count(value)) {
+				objInfo.name = ObjDic[value].name;
+			}
+			else {
+				objInfo.name = "";
+			}
+			objInfo.typeName = valueTypeName;
+			ObjWindowList.push_back(objInfo);
+
+		}
+		else {
+			printf("This is a Array!\n");
+			printf("Array Length is %d\n", il2cpp_array_length(value));
+
+			ArrayWindowInfo arrayInfo;
+			arrayInfo.obj = value;
+			arrayInfo.typeName = delArrayName(valueTypeName);
+			arrayInfo.state = true;
+			ArrayWindowList.push_back(arrayInfo);
+		}
+	}
+
+}
+
+void createArrayWindows() {
+	int arrayWindowListSize = ArrayWindowList.size();
+	for (int i = 0; i < arrayWindowListSize; ) {
+		ArrayWindowInfo* arrayWindow = &ArrayWindowList[i];
+		if (arrayWindow->state) {
+			if (*(long long*)arrayWindow->obj != 0) {
+				ImGui::Begin(("Array Window##" + to_string((int)arrayWindow->obj)).c_str(), &arrayWindow->state);
+				int arrayLength = il2cpp_array_length(arrayWindow->obj);
+
+				ImGui::Text("Array Type: %s\n", arrayWindow->typeName.c_str());
+
+				ImGuiTableFlags flags = 1;
+				if (ImGui::BeginTable((to_string((int)arrayWindow->obj) + "_table").c_str(), 2, flags)) {
+					ImGui::TableSetupColumn("Index");
+					ImGui::TableSetupColumn("Value");
+					ImGui::TableHeadersRow();
+
+					for (int i = 0; i < arrayLength; i++) {
+						void* arrayObj = arrayindex_hook(arrayWindow->obj, i);
+						if (arrayObj) {
+							showArray(i, arrayObj, arrayWindow);
+						}
+					}
+
+
+					ImGui::EndTable();
+				}
+
+				ImGui::End();
+			}
+			else {
+				arrayWindow->state = false;
+			}
+			i++;
+		}
+		else {
+			auto it = ArrayWindowList.begin();
+			ArrayWindowList.erase(it + i);
+			arrayWindowListSize -= 1;
 		}
 	}
 }
@@ -4045,7 +4229,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.091"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.093"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
@@ -4136,6 +4320,14 @@ int imguiwindow()
 			ImGui::Checkbox("Another Window", &show_another_window);
 			ImGui::Checkbox("Obj Window", &show_obj_window);
 			ImGui::Checkbox("Enable ActiveBox", &show_active_box);
+
+			if (ImGui::Button("The World!")) {
+				time_hook(0);
+			}
+
+			if (ImGui::Button("Return!")) {
+				time_hook(1);
+			}
 
 
 			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
@@ -4251,6 +4443,7 @@ int imguiwindow()
 		}
 
 		createObjWindows();
+		createArrayWindows();
 
 
 		// Rendering
