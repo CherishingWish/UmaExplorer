@@ -659,8 +659,9 @@ struct ObjectWindowInfo
 struct ObjectProInfo
 {
 	void* type;
-	void* properties;
+	vector<void*> properties;
 	int proLength;
+	vector<string> propertyNameList;
 };
 
 namespace
@@ -3664,7 +3665,7 @@ void getField(void* obj, void* _class) {
 }
 
 //递归遍历所有Property
-void getProperty(void* obj, void* _class, int* index, void* new_properties, int proLength) {
+void getProperty(void* obj, void* _class, int* index, vector<void*> new_properties, vector<string> propertyList, int proLength, ObjectWindowInfo* objWindow) {
 	void* iter = nullptr;
 	void* parent = il2cpp_class_get_parent(_class);
 
@@ -3678,8 +3679,10 @@ void getProperty(void* obj, void* _class, int* index, void* new_properties, int 
 
 		string propertyName = il2cpp_property_get_name(property);
 		//printf("Property Name is %s\n", propertyName.c_str());
-		void* pro = arrayindex_hook(new_properties, *index);
-		string trueProName = UmaGetString((umastring*)property_hook(namePro, pro));
+		//printf("Index is %d\n", *index);
+
+		void* pro = new_properties[*index];
+		string trueProName = propertyList[*index];
 		//printf("New Name is %s\n", trueProName.c_str());
 
 		if (propertyName != trueProName) {
@@ -3723,137 +3726,153 @@ void getProperty(void* obj, void* _class, int* index, void* new_properties, int 
 			bool close_button = true;
 			string getName = "get##" + to_string((int)property) + "_" + to_string((int)index);
 			ImGui::TableSetColumnIndex(3);
-			if (il2cpp_class_is_enum(propertyClass)) {
-				value = property_hook(pro, obj);
-				if (value) {
-					int trueEnumValue = *((int*)value + 4);
-					string trueEnumName = getEnumName(propertyClass, trueEnumValue);
-					ImGui::Text("%d (%s)", trueEnumValue, trueEnumName.c_str());
-				}
-			}
-			else if (propertyTypeName == "System.String") {
-				value = property_hook(pro, obj);
-				if (value) {
-					string trueText = UmaGetString((umastring*)value);
-					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), trueText.c_str());
-				}
-			}
-			else if (propertyTypeName == "System.Int32") {
-				value = property_hook(pro, obj);
-				if (value) {
-					int trueInt32 = *((int*)value + 4);
-					ImGui::Text(to_string(trueInt32).c_str());
-				}
-			}
-			else if (propertyTypeName == "System.UInt32") {
-				value = property_hook(pro, obj);
-				if (value) {
-					unsigned int trueUInt32 = *((unsigned int*)value + 4);
-					ImGui::Text(to_string(trueUInt32).c_str());
-				}
-			}
-			else if (propertyTypeName == "System.Int64") {
-				value = property_hook(pro, obj);
-				if (value) {
-					size_t trueInt64 = *(size_t*)((int*)value + 4);
-					ImGui::Text("%d", trueInt64);
-				}
-			}
-			else if (propertyTypeName == "System.IntPtr") {
-				value = property_hook(pro, obj);
-				if (value) {
-					size_t trueIntPtr = *(size_t*)((int*)value + 4);
-					ImGui::Text("0X%p", trueIntPtr);
-				}
-			}
-			else if (propertyTypeName == "System.Boolean") {
-				value = property_hook(pro, obj);
-				if (value) {
-					bool trueBoolean = *(bool*)((int*)value + 4);
-					if (trueBoolean) {
-						ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
-					}
-					else {
-						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
-					}
-				}
-			}
-			else if (propertyTypeName == "System.Single") {
-				value = property_hook(pro, obj);
-				if (value) {
-					float trueSingle = *(float*)((int*)value + 4);
-					ImGui::Text(to_string(trueSingle).c_str());
-				}
-			}
-			else if (propertyTypeName == "System.Guid") {
-				value = property_hook(pro, obj);
-				if (value) {
-					string trueGuid = UmaGetString(guid_hook(value));
-					ImGui::Text(trueGuid.c_str());
-				}
-			}
-			
-			else if (propertyTypeName == "UnityEngine.Vector2") {
-				value = property_hook(pro, obj);
-				if (value) {
-					float vector[] = { *((float*)value + 4),*((float*)value + 5) };
-					string vectorName = "##Vector2_" + to_string((int)property);
-					ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
-				}
-			}
-			else if (propertyTypeName == "UnityEngine.Vector3") {
-				value = property_hook(pro, obj);
-				if (value) {
-					float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6) };
-					string vectorName = "##Vector3_" + to_string((int)property);
-					ImGui::InputFloat3(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
-				}
-			}
-			else if (propertyTypeName == "UnityEngine.Vector4" or propertyTypeName == "UnityEngine.Quaternion") {
-				value = property_hook(pro, obj);
-				if (value) {
-					float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6), *((float*)value + 7) };
-					string vectorName = "##Vector4_" + to_string((int)property);
-					ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
-				}
-			}
-			else {
-				close_button = false;
-			}
-			ImGui::TableSetColumnIndex(4);
-			ImGui::BeginDisabled(close_button);
-			if (ImGui::Button(getName.c_str())) {
-
-				try {
+			try {
+				if (il2cpp_class_is_enum(propertyClass)) {
 					value = property_hook(pro, obj);
 					if (value) {
-						void* valueClass = il2cpp_object_get_class(value);
-						//printf("valueClass is %p\n", valueClass);
-						void* valueType = il2cpp_class_get_type(valueClass);
-						//printf("valueType is %p\n", valueType);
-						string valueTypeName = il2cpp_type_get_name(valueType);
-						//printf("valueTypeName is %s\n", valueTypeName.c_str());
-						ObjectWindowInfo objInfo;
-						objInfo.obj = value;
-						objInfo._class = valueClass;
-						objInfo.state = true;
-						objInfo.name = valueTypeName;
-						ObjWindowList.push_back(objInfo);
+						int trueEnumValue = *((int*)value + 4);
+						string trueEnumName = getEnumName(propertyClass, trueEnumValue);
+						ImGui::Text("%d (%s)", trueEnumValue, trueEnumName.c_str());
 					}
-					else {
+				}
+				else if (propertyTypeName == "System.String") {
+					value = property_hook(pro, obj);
+					if (value) {
+						string trueText = UmaGetString((umastring*)value);
+						ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), trueText.c_str());
+					}
+				}
+				else if (propertyTypeName == "System.Int32") {
+					value = property_hook(pro, obj);
+					if (value) {
+						int trueInt32 = *((int*)value + 4);
+						ImGui::Text(to_string(trueInt32).c_str());
+					}
+				}
+				else if (propertyTypeName == "System.UInt32") {
+					value = property_hook(pro, obj);
+					if (value) {
+						unsigned int trueUInt32 = *((unsigned int*)value + 4);
+						ImGui::Text(to_string(trueUInt32).c_str());
+					}
+				}
+				else if (propertyTypeName == "System.Int64") {
+					value = property_hook(pro, obj);
+					if (value) {
+						size_t trueInt64 = *(size_t*)((int*)value + 4);
+						ImGui::Text("%d", trueInt64);
+					}
+				}
+				else if (propertyTypeName == "System.IntPtr") {
+					value = property_hook(pro, obj);
+					if (value) {
+						size_t trueIntPtr = *(size_t*)((int*)value + 4);
+						ImGui::Text("0X%p", trueIntPtr);
+					}
+				}
+				else if (propertyTypeName == "System.Boolean") {
+					value = property_hook(pro, obj);
+					if (value) {
+						bool trueBoolean = *(bool*)((int*)value + 4);
+						if (trueBoolean) {
+							ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "True");
+						}
+						else {
+							ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "False");
+						}
+					}
+				}
+				else if (propertyTypeName == "System.Single") {
+					value = property_hook(pro, obj);
+					if (value) {
+						float trueSingle = *(float*)((int*)value + 4);
+						ImGui::Text(to_string(trueSingle).c_str());
+					}
+				}
+				else if (propertyTypeName == "System.Guid") {
+					value = property_hook(pro, obj);
+					if (value) {
+						string trueGuid = UmaGetString(guid_hook(value));
+						ImGui::Text(trueGuid.c_str());
+					}
+				}
+
+				else if (propertyTypeName == "UnityEngine.Vector2") {
+					value = property_hook(pro, obj);
+					if (value) {
+						float vector[] = { *((float*)value + 4),*((float*)value + 5) };
+						string vectorName = "##Vector2_" + to_string((int)property);
+						ImGui::InputFloat2(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+					}
+				}
+				else if (propertyTypeName == "UnityEngine.Vector3") {
+					value = property_hook(pro, obj);
+					if (value) {
+						float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6) };
+						string vectorName = "##Vector3_" + to_string((int)property);
+						ImGui::InputFloat3(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+					}
+				}
+				else if (propertyTypeName == "UnityEngine.Vector4" or propertyTypeName == "UnityEngine.Quaternion") {
+					value = property_hook(pro, obj);
+					if (value) {
+						float vector[] = { *((float*)value + 4),*((float*)value + 5), *((float*)value + 6), *((float*)value + 7) };
+						string vectorName = "##Vector4_" + to_string((int)property);
+						ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+					}
+				}
+				else {
+					close_button = false;
+				}
+				ImGui::TableSetColumnIndex(4);
+				ImGui::BeginDisabled(close_button);
+				if (ImGui::Button(getName.c_str())) {
+
+					try {
+						value = property_hook(pro, obj);
+						if (value) {
+							void* valueClass = il2cpp_object_get_class(value);
+							//printf("valueClass is %p\n", valueClass);
+							void* valueType = il2cpp_class_get_type(valueClass);
+							//printf("valueType is %p\n", valueType);
+							string valueTypeName = il2cpp_type_get_name(valueType);
+							//printf("valueTypeName is %s\n", valueTypeName.c_str());
+							ObjectWindowInfo objInfo;
+							objInfo.obj = value;
+							objInfo._class = valueClass;
+							objInfo.state = true;
+							objInfo.name = valueTypeName;
+							ObjWindowList.push_back(objInfo);
+						}
+						else {
+							ImGui::TableSetColumnIndex(3);
+							ImGui::TextDisabled("Empty");
+							ImGui::TableSetColumnIndex(4);
+						}
+					}
+					catch (...) {
 						ImGui::TableSetColumnIndex(3);
-						ImGui::TextDisabled("Empty");
+						ImGui::TextDisabled("Error");
 						ImGui::TableSetColumnIndex(4);
 					}
 				}
-				catch (...) {
-					ImGui::TableSetColumnIndex(3);
-					ImGui::TextDisabled("Error");
-					ImGui::TableSetColumnIndex(4);
-				}
+				ImGui::SameLine();
+				ImGui::EndDisabled();
 			}
-			ImGui::SameLine();
-			ImGui::EndDisabled();
+			catch (...) {
+				printf("Exit!\n");
+				if (objWindow) {
+					objWindow->state = false;
+					if (ObjProDic.count(obj)) {
+						ObjProDic.erase(obj);
+					}
+				}
+				else {
+					show_info_window = false;
+					ObjProDic.clear();
+				}
+				return;
+			}
 		}
 		MethodInfo* setMethod;
 		if (setMethod = il2cpp_property_get_set_method(property)) {
@@ -3869,7 +3888,7 @@ void getProperty(void* obj, void* _class, int* index, void* new_properties, int 
 		*index += 1;
 	}
 	if (parent) {
-		getProperty(obj, parent, index, new_properties, proLength);
+		getProperty(obj, parent, index, new_properties, propertyList, proLength, objWindow);
 	}
 }
 
@@ -3897,16 +3916,32 @@ void getFieldWindow(void* obj, void* _class, int i = 0) {
 }
 
 //创建PropertyWindow
-void getPropertyWindow(void* obj, void* _class, int i = 0) {
+void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nullptr,int i = 0) {
 	ImGuiTableFlags flags = 1;
 
 	string componentProperty = to_string(int(obj)) + "_property_" + to_string(i);
 	if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
+		if (ObjProDic[obj].type == 0) {
+			ObjProDic.erase(obj);
+		}
+
 		if (!ObjProDic.count(obj)) {
 			ObjectProInfo proInfo;
 			proInfo.type = objType_hook(obj);
-			proInfo.properties = typePros_hook(proInfo.type);
-			proInfo.proLength = il2cpp_symbols::get_array_length(proInfo.properties);
+			void* tempProperties = typePros_hook(proInfo.type);
+			proInfo.proLength = il2cpp_symbols::get_array_length(tempProperties);
+
+			vector<string> proNameList;
+			vector<void*> proList;
+			for (int i = 0; i < proInfo.proLength; i++) {
+				void* pro = arrayindex_hook(tempProperties, i);
+				proList.push_back(pro);
+				proNameList.push_back(UmaGetString((umastring*)property_hook(namePro, pro)));
+			}
+
+			proInfo.properties = proList;
+			proInfo.propertyNameList = proNameList;
+
 			ObjProDic[obj] = proInfo;
 		}
 
@@ -3920,9 +3955,19 @@ void getPropertyWindow(void* obj, void* _class, int i = 0) {
 			ImGui::TableSetupColumn("Property Method");
 			ImGui::TableHeadersRow();
 
-			int index = 0;
+			
 
-			getProperty(obj, _class, &index, ObjProDic[obj].properties, ObjProDic[obj].proLength);
+			try {
+				int index = 0;
+				getProperty(obj, _class, &index, ObjProDic[obj].properties, ObjProDic[obj].propertyNameList, ObjProDic[obj].proLength, objWindow);
+			}
+			catch (...) {
+				printf("Error Happen!\n");
+				if (ObjProDic.count(obj)) {
+					ObjProDic.erase(obj);
+				}
+			}
+			
 
 			ImGui::EndTable();
 		}
@@ -3942,7 +3987,7 @@ void show_components(void* currentObj) {
 
 			getFieldWindow(components[i], _class, i);
 
-			getPropertyWindow(components[i], _class, i);
+			getPropertyWindow(components[i], _class, nullptr, i);
 
 			ImGui::TreePop();
 		};
@@ -3960,7 +4005,7 @@ void createObjWindows() {
 				ImGui::Text(("Object Type: " + objWindow->name).c_str());
 				//printf("%s\n", objWindow->name.c_str());
 				getFieldWindow(objWindow->obj, objWindow->_class);
-				getPropertyWindow(objWindow->obj, objWindow->_class);
+				getPropertyWindow(objWindow->obj, objWindow->_class, objWindow);
 				ImGui::End();
 			}
 			else {
@@ -4000,7 +4045,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.09"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.091"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
