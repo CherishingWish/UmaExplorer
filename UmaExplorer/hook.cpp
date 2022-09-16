@@ -76,6 +76,10 @@ char file_fps[100];
 static void* Global_ProInfo;
 static void* namePro;
 
+static vector<pair<int, string>> umaList;
+static flat_hash_map<int, bool> selected_uma_id;
+
+static bool is_enable_chara = false;
 
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
@@ -2313,16 +2317,38 @@ namespace
 		os << pretty_print(s);
 		njson j = njson::parse(os.str());
 
+		if (is_enable_chara) {
+			if (j["data"].contains("common_define")) {
 
-		//封包代码更改
-		std::vector<uint8_t> new_buffer;
-		ojson tmp = ojson::parse(j.dump());
-		msgpack::encode_msgpack(tmp, new_buffer);
 
-		char* new_dst = reinterpret_cast<char*>(&new_buffer[0]);
-		memset(dst, 0, dstCapacity);
-		memcpy(dst, new_dst, new_buffer.size());
-		ret = new_buffer.size();
+
+				for (auto it : selected_uma_id) {
+					printf("%d: %d\n", it.first, it.second);
+					if (it.second) {
+						//添加角色
+						njson new_card = {};
+						new_card["card_id"] = it.first;
+						new_card["create_time"] = "2022-05-22 20:13:16";
+						new_card["null"] = 1;
+						new_card["rarity"] = 3;
+						new_card["skill_data_array"] = njson::value_t::array;
+						new_card["talent_level"] = 3;
+
+						j["data"]["card_list"][j["data"]["card_list"].size()] = new_card;
+					}
+				}
+
+				//封包代码更改
+				std::vector<uint8_t> new_buffer;
+				ojson tmp = ojson::parse(j.dump());
+				msgpack::encode_msgpack(tmp, new_buffer);
+
+				char* new_dst = reinterpret_cast<char*>(&new_buffer[0]);
+				memset(dst, 0, dstCapacity);
+				memcpy(dst, new_dst, new_buffer.size());
+				ret = new_buffer.size();
+			}
+		}
 
 		//原解包代码
 		/*
@@ -2408,6 +2434,47 @@ namespace
 			srcSize = new_buffer.size() + 170;
 
 		}
+
+		
+		if (is_enable_chara) {
+
+			if (j.contains("chara_id") && j.contains("viewer_id")) {
+				j["chara_id"] = 1007;
+				if (j.contains("dress_id")) {
+					j["dress_id"] = 101;
+				}
+				if (j.contains("mini_dress_id")) {
+					j["mini_dress_id"] = 101;
+				}
+
+				//封包代码更改
+				std::vector<uint8_t> new_buffer;
+				ojson tmp = ojson::parse(j.dump());
+				msgpack::encode_msgpack(tmp, new_buffer);
+
+				char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
+				memset(src + 170, 0, srcSize - 170);
+				memcpy(src + 170, new_src, new_buffer.size());
+
+				srcSize = new_buffer.size() + 170;
+			}
+			else if (j.contains("add_voice_data_array")) {
+				j["add_voice_data_array"] = njson::value_t::array;
+
+				//封包代码更改
+				std::vector<uint8_t> new_buffer;
+				ojson tmp = ojson::parse(j.dump());
+				msgpack::encode_msgpack(tmp, new_buffer);
+
+				char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
+				memset(src + 170, 0, srcSize - 170);
+				memcpy(src + 170, new_src, new_buffer.size());
+
+				srcSize = new_buffer.size() + 170;
+
+			}
+		}
+		
 
 		int ret = reinterpret_cast<decltype(LZ4_compress_default_ext_hook)*>(LZ4_compress_default_ext_orig)(
 			src, dst, srcSize, dstCapacity);
@@ -4208,6 +4275,20 @@ void createArrayWindows() {
 	}
 }
 
+//一个小小问号
+static void HelpMarker(const char* desc)
+{
+	ImGui::TextDisabled("(?)");
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+	{
+		ImGui::BeginTooltip();
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+		ImGui::TextUnformatted(desc);
+		ImGui::PopTextWrapPos();
+		ImGui::EndTooltip();
+	}
+}
+
 //************************************************************************************************************
 static ID3D11Device* g_pd3dDevice = NULL;
 static ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
@@ -4229,7 +4310,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.093"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.094"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
@@ -4270,12 +4351,16 @@ int imguiwindow()
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
-	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
+	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ARIALUNI.TTF", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
+
+	static const ImWchar ranges[] = { 0x0001, 0xffff, 0 };
+	io.Fonts->AddFontFromFileTTF("Fonts/dynamic01.otf", 12.0f, NULL, ranges);
+
 	//IM_ASSERT(font != NULL);
 
 	// Our state
-	bool show_demo_window = true;
-	bool show_another_window = false;
+	bool show_demo_window = false;
+	bool show_tool_window = true;
 	bool show_obj_window = false;
 
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -4317,13 +4402,15 @@ int imguiwindow()
 
 			ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
 			ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-			ImGui::Checkbox("Another Window", &show_another_window);
+			ImGui::Checkbox("Tool Window", &show_tool_window);
 			ImGui::Checkbox("Obj Window", &show_obj_window);
 			ImGui::Checkbox("Enable ActiveBox", &show_active_box);
 
 			if (ImGui::Button("The World!")) {
 				time_hook(0);
 			}
+
+			ImGui::SameLine();
 
 			if (ImGui::Button("Return!")) {
 				time_hook(1);
@@ -4375,12 +4462,24 @@ int imguiwindow()
 		}
 
 		// 3. Show another simple window.
-		if (show_another_window)
+		if (show_tool_window)
 		{
-			ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-			ImGui::Text("Hello from another window!");
-			if (ImGui::Button("Close Me"))
-				show_another_window = false;
+			ImGui::Begin("Tool Window", &show_tool_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+			ImGui::Checkbox("##Enable Character", &is_enable_chara); ImGui::SameLine();
+			ImGui::BeginDisabled(!is_enable_chara);
+			if (ImGui::TreeNode("Enable Character")) {
+				ImGui::Text("Select characters you want to have before tap game start button.");
+				ImGui::SameLine(); HelpMarker("Already have characters are not needed.");
+				
+				for (int uma = 0; uma < umaList.size(); uma++) {
+					int id = umaList[uma].first;
+					string name = umaList[uma].second;
+					ImGui::Checkbox((to_string(id)+": "+name).c_str(), &selected_uma_id[id]);
+				}
+
+				ImGui::TreePop();
+			}
+			ImGui::EndDisabled();
 			ImGui::End();
 		}
 
@@ -4703,6 +4802,12 @@ void attach()
 	MH_EnableHook(LoadLibraryW);
 
 	std::thread(edb::init).detach();
+	mdb::init();
+
+	umaList = mdb::get_uma_all();
+	for (int i = 0; i < umaList.size(); i++) {
+		selected_uma_id[umaList[i].first] = false;
+	}
 }
 
 void detach()
