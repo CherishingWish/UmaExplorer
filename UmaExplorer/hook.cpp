@@ -80,6 +80,7 @@ static vector<pair<int, string>> umaList;
 static flat_hash_map<int, bool> selected_uma_id;
 
 static bool is_enable_chara = false;
+static bool is_live_bypass = true;
 
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
@@ -2416,24 +2417,27 @@ namespace
 		os << pretty_print(s);
 		njson j = njson::parse(os.str());
 
-		if (j.contains("live_theater_save_info")) {
-			for (int i = 0; i < j["live_theater_save_info"]["member_info_array"].size(); i++) {
-				j["live_theater_save_info"]["member_info_array"][i]["chara_id"] = 0;
-				j["live_theater_save_info"]["member_info_array"][i]["mob_id"] = 8590 + i;
-				j["live_theater_save_info"]["member_info_array"][i]["dress_id"] = 7;
+		if (is_live_bypass) {
+			if (j.contains("live_theater_save_info")) {
+				for (int i = 0; i < j["live_theater_save_info"]["member_info_array"].size(); i++) {
+					j["live_theater_save_info"]["member_info_array"][i]["chara_id"] = 0;
+					j["live_theater_save_info"]["member_info_array"][i]["mob_id"] = 8590 + i;
+					j["live_theater_save_info"]["member_info_array"][i]["dress_id"] = 7;
+				}
+				//封包代码更改
+				std::vector<uint8_t> new_buffer;
+				ojson tmp = ojson::parse(j.dump());
+				msgpack::encode_msgpack(tmp, new_buffer);
+
+				char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
+				memset(src + 170, 0, srcSize - 170);
+				memcpy(src + 170, new_src, new_buffer.size());
+
+				srcSize = new_buffer.size() + 170;
+
 			}
-			//封包代码更改
-			std::vector<uint8_t> new_buffer;
-			ojson tmp = ojson::parse(j.dump());
-			msgpack::encode_msgpack(tmp, new_buffer);
-
-			char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
-			memset(src + 170, 0, srcSize - 170);
-			memcpy(src + 170, new_src, new_buffer.size());
-
-			srcSize = new_buffer.size() + 170;
-
 		}
+		
 
 		
 		if (is_enable_chara) {
@@ -4465,11 +4469,21 @@ int imguiwindow()
 		if (show_tool_window)
 		{
 			ImGui::Begin("Tool Window", &show_tool_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-			ImGui::Checkbox("##Enable Character", &is_enable_chara); ImGui::SameLine();
+			
+			ImGui::Checkbox("Bypass Live 205 Error", &is_live_bypass); ImGui::SameLine(); HelpMarker("Will replace characters after live end.");
+			ImGui::Checkbox("##Enable Character Profile", &is_enable_chara); ImGui::SameLine();
+			
 			ImGui::BeginDisabled(!is_enable_chara);
-			if (ImGui::TreeNode("Enable Character")) {
+			if (ImGui::TreeNode("Enable Character Profile")) {
 				ImGui::Text("Select characters you want to have before tap game start button.");
-				ImGui::SameLine(); HelpMarker("Already have characters are not needed.");
+				ImGui::SameLine(); HelpMarker("Only profile is safe, otherwhere is risky!"); ImGui::SameLine();
+
+				if (ImGui::Button("Select All")) {
+					for (int uma = 0; uma < umaList.size(); uma++) {
+						int id = umaList[uma].first;
+						selected_uma_id[id] = true;
+					}
+				}
 				
 				for (int uma = 0; uma < umaList.size(); uma++) {
 					int id = umaList[uma].first;
