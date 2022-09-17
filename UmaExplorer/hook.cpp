@@ -72,6 +72,7 @@ int global_chara_id;
 
 int global_fps = 60;
 char file_fps[100];
+int temp_fps = 60;
 
 static void* Global_ProInfo;
 static void* namePro;
@@ -2506,16 +2507,6 @@ namespace
 			return;
 		}
 
-		ifstream OpenFile("fps.txt");
-		if (!OpenFile.fail()) {
-			OpenFile.getline(file_fps, 100);
-			global_fps = atoi(file_fps);
-			printf("FPS is %d\n", global_fps);
-		}
-		else {
-			printf("Missing fps.txt\n");
-		}
-
 		auto LZ4_decompress_safe_ext_ptr = GetProcAddress(libnative_module, "LZ4_decompress_safe_ext");
 		printf("LZ4_decompress_safe_ext at %p\n", LZ4_decompress_safe_ext_ptr);
 		if (LZ4_decompress_safe_ext_ptr == nullptr)
@@ -4470,9 +4461,25 @@ int imguiwindow()
 		{
 			ImGui::Begin("Tool Window", &show_tool_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
 			
+			if (ImGui::TreeNode("Set FPS(60 at default)")) {
+				ImGui::InputInt("##Set FPS", &temp_fps);
+				ImGui::SameLine();
+				ImGui::Spacing();
+				ImGui::SameLine();
+				if (ImGui::Button("Set##FPS")) {
+					global_fps = temp_fps;
+					fps_hook(temp_fps);
+				}
+				ImGui::TreePop();
+			}
+
+			ImGui::Separator();
+
 			ImGui::Checkbox("Bypass Live 205 Error", &is_live_bypass); ImGui::SameLine(); HelpMarker("Will replace characters after live end.");
-			ImGui::Checkbox("##Enable Character Profile", &is_enable_chara); ImGui::SameLine();
 			
+			ImGui::Separator();
+			
+			ImGui::Checkbox("##Enable Character Profile", &is_enable_chara); ImGui::SameLine();
 			ImGui::BeginDisabled(!is_enable_chara);
 			if (ImGui::TreeNode("Enable Character Profile")) {
 				ImGui::Text("Select characters you want to have before tap game start button.");
@@ -4494,6 +4501,7 @@ int imguiwindow()
 				ImGui::TreePop();
 			}
 			ImGui::EndDisabled();
+			
 			ImGui::End();
 		}
 
