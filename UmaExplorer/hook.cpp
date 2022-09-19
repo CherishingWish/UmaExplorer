@@ -83,6 +83,8 @@ static flat_hash_map<int, bool> selected_uma_id;
 static bool is_enable_chara = false;
 static bool is_live_bypass = true;
 
+static void* selectedMoveObj;
+
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
 
@@ -1067,6 +1069,84 @@ namespace
 		reinterpret_cast<decltype(break_hook)*>(break_orig)(millisecondsTimeout);
 
 
+	}
+
+	void* localP_orig = nullptr;
+
+	void localP_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localP_hook)*>(localP_orig)(_this, value, 0);
+		}
+	}
+
+	void* globalP_orig = nullptr;
+
+	void globalP_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(globalP_hook)*>(globalP_orig)(_this, value, 0);
+		}
+	}
+
+	void* localE_orig = nullptr;
+
+	void localE_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localE_hook)*>(localE_orig)(_this, value, 0);
+		}
+	}
+
+	void* globalE_orig = nullptr;
+
+	void globalE_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(globalE_hook)*>(globalE_orig)(_this, value, 0);
+		}
+	}
+
+	void* localQ_orig = nullptr;
+
+	void localQ_hook(void* _this, Quaternion value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localQ_hook)*>(localQ_orig)(_this, value, 0);
+		}
+	}
+
+	void* globalQ_orig = nullptr;
+
+	void globalQ_hook(void* _this, Quaternion value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(globalQ_hook)*>(globalQ_orig)(_this, value, 0);
+		}
+	}
+
+	void* forward_orig = nullptr;
+
+	Vector3 forward_hook(void* _this)
+	{
+		Vector3 ret = reinterpret_cast<decltype(forward_hook)*>(forward_orig)(_this);
+		return ret;
+	}
+
+	void* up_orig = nullptr;
+
+	Vector3 up_hook(void* _this)
+	{
+		Vector3 ret = reinterpret_cast<decltype(up_hook)*>(up_orig)(_this);
+		return ret;
+	}
+
+	void* right_orig = nullptr;
+
+	Vector3 right_hook(void* _this)
+	{
+		Vector3 ret = reinterpret_cast<decltype(right_hook)*>(right_orig)(_this);
+		return ret;
 	}
 
 
@@ -2319,39 +2399,81 @@ namespace
 		os << pretty_print(s);
 		njson j = njson::parse(os.str());
 
-		if (is_enable_chara) {
-			if (j["data"].contains("common_define")) {
+		if (j["data"].contains("common_define")) {
 
+			for (auto it : selected_uma_id) {
+				//printf("%d: %d\n", it.first, it.second);
+				if (it.second) {
+					//添加角色
+					njson new_card = {};
+					new_card["card_id"] = it.first;
+					new_card["create_time"] = "2022-05-22 20:13:16";
+					new_card["null"] = 1;
+					new_card["rarity"] = 3;
+					new_card["skill_data_array"] = njson::value_t::array;
+					new_card["talent_level"] = 3;
 
-
-				for (auto it : selected_uma_id) {
-					printf("%d: %d\n", it.first, it.second);
-					if (it.second) {
-						//添加角色
-						njson new_card = {};
-						new_card["card_id"] = it.first;
-						new_card["create_time"] = "2022-05-22 20:13:16";
-						new_card["null"] = 1;
-						new_card["rarity"] = 3;
-						new_card["skill_data_array"] = njson::value_t::array;
-						new_card["talent_level"] = 3;
-
-						j["data"]["card_list"][j["data"]["card_list"].size()] = new_card;
-					}
+					j["data"]["card_list"][j["data"]["card_list"].size()] = new_card;
 				}
-
-				//封包代码更改
-				std::vector<uint8_t> new_buffer;
-				ojson tmp = ojson::parse(j.dump());
-				msgpack::encode_msgpack(tmp, new_buffer);
-
-				char* new_dst = reinterpret_cast<char*>(&new_buffer[0]);
-				memset(dst, 0, dstCapacity);
-				memcpy(dst, new_dst, new_buffer.size());
-				ret = new_buffer.size();
 			}
+
+			
 		}
 
+		/*
+		if (j["data"].contains("race_horse_data")) {
+
+			j["data"]["race_horse_data"][2]["chara_id"] = 1030;
+			j["data"]["race_horse_data"][2]["card_id"] = 103001;
+			j["data"]["race_horse_data"][2]["single_mode_chara_id"] = 336;
+			j["data"]["race_horse_data"][2]["trained_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["chara_id"] = 1030;
+			j["data"]["race_horse_data"][3]["card_id"] = 103001;
+			j["data"]["race_horse_data"][3]["single_mode_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["trained_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["chara_id"] = 1030;
+			j["data"]["race_horse_data"][3]["card_id"] = 103001;
+			j["data"]["race_horse_data"][3]["single_mode_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["trained_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["chara_id"] = 1030;
+			j["data"]["race_horse_data"][3]["card_id"] = 103001;
+			j["data"]["race_horse_data"][3]["single_mode_chara_id"] = 336;
+			j["data"]["race_horse_data"][3]["trained_chara_id"] = 336;
+
+		}
+
+		if (j["data"].contains("race_result_info")) {
+
+			j["data"]["race_result_info"]["race_horse_data_array"][2]["chara_id"] = 1030;
+			j["data"]["race_result_info"]["race_horse_data_array"][2]["card_id"] = 103001;
+			j["data"]["race_result_info"]["race_horse_data_array"][2]["single_mode_chara_id"] = 336;
+			j["data"]["race_result_info"]["race_horse_data_array"][2]["trained_chara_id"] = 336;
+			j["data"]["race_result_info"]["race_horse_data_array"][3]["chara_id"] = 1030;
+			j["data"]["race_result_info"]["race_horse_data_array"][3]["card_id"] = 103001;
+			j["data"]["race_result_info"]["race_horse_data_array"][3]["single_mode_chara_id"] = 336;
+			j["data"]["race_result_info"]["race_horse_data_array"][3]["trained_chara_id"] = 336;
+			j["data"]["race_result_info"]["race_horse_data_array"][6]["chara_id"] = 1030;
+			j["data"]["race_result_info"]["race_horse_data_array"][6]["card_id"] = 103001;
+			j["data"]["race_result_info"]["race_horse_data_array"][6]["single_mode_chara_id"] = 336;
+			j["data"]["race_result_info"]["race_horse_data_array"][6]["trained_chara_id"] = 336;
+			j["data"]["is_match_gimmick"] = 1;
+			//j["data"]["race_result_info"]["race_horse_data_array"][2]["race_dress_id"] = 103001;
+
+		}
+		*/
+
+
+
+
+		//封包代码更改
+		std::vector<uint8_t> new_buffer;
+		ojson tmp = ojson::parse(j.dump());
+		msgpack::encode_msgpack(tmp, new_buffer);
+
+		char* new_dst = reinterpret_cast<char*>(&new_buffer[0]);
+		memset(dst, 0, dstCapacity);
+		memcpy(dst, new_dst, new_buffer.size());
+		ret = new_buffer.size();
 		//原解包代码
 		/*
 		printf("Start! \n");
@@ -3435,6 +3557,109 @@ namespace
 		MH_CreateHook((LPVOID)break_addr, break_hook, &break_orig);
 		MH_EnableHook((LPVOID)break_addr);
 
+		//尝试Hook本地位置的设置
+
+		auto localP_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_localPosition", 1
+		);
+
+		printf("localP_addr at %p\n", localP_addr);
+
+		MH_CreateHook((LPVOID)localP_addr, localP_hook, &localP_orig);
+		MH_EnableHook((LPVOID)localP_addr);
+
+		//尝试Hook全局位置的设置
+
+		auto globalP_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_position", 1
+		);
+
+		printf("globalP_addr at %p\n", globalP_addr);
+
+		MH_CreateHook((LPVOID)globalP_addr, globalP_hook, &globalP_orig);
+		MH_EnableHook((LPVOID)globalP_addr);
+
+		//尝试Hook本地欧拉的设置
+
+		auto localE_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_localEulerAngles", 1
+		);
+
+		printf("localE_addr at %p\n", localE_addr);
+
+		MH_CreateHook((LPVOID)localE_addr, localE_hook, &localE_orig);
+		MH_EnableHook((LPVOID)localE_addr);
+
+		//尝试Hook全局欧拉的设置
+
+		auto globalE_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_eulerAngles", 1
+		);
+
+		printf("globalE_addr at %p\n", globalE_addr);
+
+		MH_CreateHook((LPVOID)globalE_addr, globalE_hook, &globalE_orig);
+		MH_EnableHook((LPVOID)globalE_addr);
+
+		//尝试Hook本地四元的设置
+
+		auto localQ_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_localRotation", 1
+		);
+
+		printf("localQ_addr at %p\n", localQ_addr);
+
+		MH_CreateHook((LPVOID)localQ_addr, localQ_hook, &localQ_orig);
+		MH_EnableHook((LPVOID)localQ_addr);
+
+		//尝试Hook全局四元的设置
+
+		auto globalQ_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_rotation", 1
+		);
+
+		printf("globalQ_addr at %p\n", globalQ_addr);
+
+		MH_CreateHook((LPVOID)globalQ_addr, globalQ_hook, &globalQ_orig);
+		MH_EnableHook((LPVOID)globalQ_addr);
+
+		//获得Transform的朝向向量
+
+		auto forward_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_forward", 0
+		);
+
+		printf("forward_addr at %p\n", forward_addr);
+
+		MH_CreateHook((LPVOID)forward_addr, forward_hook, &forward_orig);
+		MH_EnableHook((LPVOID)forward_addr);
+
+		auto up_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_up", 0
+		);
+
+		printf("up_addr at %p\n", up_addr);
+
+		MH_CreateHook((LPVOID)up_addr, up_hook, &up_orig);
+		MH_EnableHook((LPVOID)up_addr);
+
+		auto right_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "get_right", 0
+		);
+
+		printf("right_addr at %p\n", right_addr);
+
+		MH_CreateHook((LPVOID)right_addr, right_hook, &right_orig);
+		MH_EnableHook((LPVOID)right_addr);
 
 		printf("Start Get Info\n");
 
@@ -4358,6 +4583,9 @@ int imguiwindow()
 	bool show_tool_window = true;
 	bool show_obj_window = false;
 
+	bool enable_edit = false;
+	bool camera_base = false;
+
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 
@@ -4544,16 +4772,128 @@ int imguiwindow()
 		if (show_info_window) {
 			if (inst_obj_hook(ObjDic[selected_obj].instanceID) == selected_obj) {
 				ImGui::Begin("Info Window", &show_info_window);
-				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str());
+				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str()); 
+				ImGui::Checkbox("Edit", &enable_edit); ImGui::SameLine(); 
+				HelpMarker("Use QWEASD to control position, and UIOJKL to control rotation, or edit it directly."); ImGui::SameLine();
+				ImGui::Checkbox("Is Camera", &camera_base); ImGui::SameLine();
+				HelpMarker("Movement will base on camera look direction, and you can control rotation with mouse when hold Shift.");
 				Vector3 V_pos = position_hook(selected_obj);
 				Vector3 V_rot = rotation_hook(selected_obj);
 				Vector3 V_scale = scale_hook(selected_obj);
 				float position[] = { V_pos.x, V_pos.y, V_pos.z };
 				float rotation[] = { V_rot.x, V_rot.y, V_rot.z };
 				float scale[] = { V_scale.x, V_scale.y, V_scale.z };
-				ImGui::InputFloat3("Position", position, "%.5f", ImGuiInputTextFlags_ReadOnly);
-				ImGui::InputFloat3("Rotation", rotation, "%.5f", ImGuiInputTextFlags_ReadOnly);
-				ImGui::InputFloat3("Scale", scale, "%.5f", ImGuiInputTextFlags_ReadOnly);
+
+				ImGui::BeginDisabled(!enable_edit);
+				ImGui::InputFloat3("Position", position, "%.5f");
+				ImGui::InputFloat3("Rotation", rotation, "%.5f");
+				ImGui::InputFloat3("Scale", scale, "%.5f");
+				ImGui::EndDisabled();
+
+				if (enable_edit) {
+					selectedMoveObj = selected_obj;
+
+					V_pos.x = position[0]; V_pos.y = position[1]; V_pos.z = position[2];
+					V_rot.x = rotation[0]; V_rot.y = rotation[1]; V_rot.z = rotation[2];
+
+					const ImGuiKey key_first = 0;
+					for (ImGuiKey key = key_first; key < ImGuiKey_COUNT; key++) {
+						if (ImGui::IsKeyDown(key)) {
+							if (!camera_base) {
+								if (!strcmp(ImGui::GetKeyName(key), "W")) {
+									V_pos.z += 0.05;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "S")) {
+									V_pos.z -= 0.05;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "A")) {
+									V_pos.x -= 0.05;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "D")) {
+									V_pos.x += 0.05;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "Q")) {
+									V_pos.y += 0.05;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "E")) {
+									V_pos.y -= 0.05;
+								}
+							}
+							else {
+								Vector3 up = up_hook(selected_obj);
+								Vector3 right = right_hook(selected_obj);
+								Vector3 forward = forward_hook(selected_obj);
+
+								if (!strcmp(ImGui::GetKeyName(key), "W")) {
+									V_pos.x += 0.05 * forward.x;
+									V_pos.y += 0.05 * forward.y;
+									V_pos.z += 0.05 * forward.z;
+								}				 
+								if (!strcmp(ImGui::GetKeyName(key), "S")) {
+									V_pos.x -= 0.05 * forward.x;
+									V_pos.y -= 0.05 * forward.y;
+									V_pos.z -= 0.05 * forward.z;
+								}				 
+								if (!strcmp(ImGui::GetKeyName(key), "A")) {
+									V_pos.x -= 0.05 * right.x;
+									V_pos.y -= 0.05 * right.y;
+									V_pos.z -= 0.05 * right.z;
+								}				 
+								if (!strcmp(ImGui::GetKeyName(key), "D")) {
+									V_pos.x += 0.05 * right.x;
+									V_pos.y += 0.05 * right.y;
+									V_pos.z += 0.05 * right.z;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "Q")) {
+									V_pos.x += 0.05 * up.x;
+									V_pos.y += 0.05 * up.y;
+									V_pos.z += 0.05 * up.z;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "E")) {
+									V_pos.x -= 0.05 * up.x;
+									V_pos.y -= 0.05 * up.y;
+									V_pos.z -= 0.05 * up.z;
+								}
+								if (!strcmp(ImGui::GetKeyName(key), "ModShift")) {
+									ImGuiIO& io = ImGui::GetIO();
+									V_rot.x += 0.1 * io.MouseDelta.y;
+									V_rot.y += 0.1 * io.MouseDelta.x;
+								}		
+							}
+							
+							if (!strcmp(ImGui::GetKeyName(key), "I")) {
+								V_rot.x -= 0.2;
+							}
+							if (!strcmp(ImGui::GetKeyName(key), "K")) {
+								V_rot.x += 0.2;
+							}
+							if (!strcmp(ImGui::GetKeyName(key), "J")) {
+								V_rot.y -= 0.2;
+							}
+							if (!strcmp(ImGui::GetKeyName(key), "L")) {
+								V_rot.y += 0.2;
+							}
+							if (!strcmp(ImGui::GetKeyName(key), "U")) {
+								V_rot.z += 0.2;
+							}
+							if (!strcmp(ImGui::GetKeyName(key), "O")) {
+								V_rot.z -= 0.2;
+							}
+						}
+					}
+					
+
+					
+
+					
+
+					localP_hook(selected_obj, V_pos, 1024);
+					localE_hook(selected_obj, V_rot, 1024);
+				}
+				else {
+					selectedMoveObj = nullptr;
+				}
+
 				show_components(selected_obj);
 				ImGui::End();
 			}
