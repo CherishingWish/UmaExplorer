@@ -1069,6 +1069,12 @@ namespace
 
 	}
 
+	void* set_antialiasing_orig = nullptr;
+	int g_antialiasing = -1;
+	void set_antialiasing_hook(int value) {
+		printf("set AntiAliasing: %d\n", value);
+		return reinterpret_cast<decltype(set_antialiasing_hook)*>(set_antialiasing_orig)(g_antialiasing == -1 ? value : g_antialiasing);
+	}
 
 
 
@@ -3435,6 +3441,12 @@ namespace
 		MH_CreateHook((LPVOID)break_addr, break_hook, &break_orig);
 		MH_EnableHook((LPVOID)break_addr);
 
+		auto set_antialiasing_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"QualitySettings", "set_antiAliasing", 1
+		);
+		MH_CreateHook((LPVOID)set_antialiasing_addr, set_antialiasing_hook, &set_antialiasing_orig);
+		MH_EnableHook((LPVOID)set_antialiasing_addr);
 
 		printf("Start Get Info\n");
 
@@ -4469,6 +4481,33 @@ int imguiwindow()
 				if (ImGui::Button("Set##FPS")) {
 					global_fps = temp_fps;
 					fps_hook(temp_fps);
+				}
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Set AntiAliasing(-1 at default)")) {
+				/*
+				ImGui::InputInt("##Set AntiAliasing", &g_antialiasing);
+				ImGui::SameLine();
+				ImGui::Spacing();
+				ImGui::SameLine();
+				*/
+
+				if (ImGui::Button("Disable MSAA##AntiAliasing")) {
+					g_antialiasing = 0;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x2##AntiAliasing")) {
+					g_antialiasing = 2;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x4##AntiAliasing")) {
+					g_antialiasing = 4;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x8##AntiAliasing")) {
+					g_antialiasing = 8;
+					set_antialiasing_hook(g_antialiasing);
 				}
 				ImGui::TreePop();
 			}
