@@ -5,6 +5,9 @@
 #include <vector>
 #include <utility>
 
+#include "parallel_hashmap/phmap.h"
+
+using phmap::flat_hash_map;
 
 namespace mdb
 {
@@ -159,4 +162,94 @@ namespace mdb
 		return result;
 
 	}
+
+	flat_hash_map<int, std::vector<int>> get_story_all(flat_hash_map<int, std::pair<bool, bool>> selected_uma_id) {
+		flat_hash_map<int, std::vector<int>> result;
+
+		if (meta == nullptr)
+		{
+			printf("Get Uma Failed!\n");
+			return result;
+		}
+
+		try
+		{
+
+			std::string findName;
+			
+			for (auto it : selected_uma_id) {
+				if (!result.count(it.first / 100)) {
+					findName = "SELECT n FROM a WHERE n like '%story/data/50/" + std::to_string(it.first / 100) + "/storytimeline_%'";
+
+					SQLite::Statement query(*meta, findName.c_str());
+
+					std::vector<int> id_list;
+
+					while (query.executeStep())
+					{
+						std::string s = query.getColumn(0);
+
+						int left = s.rfind('_') + 1;
+						int right = s.length();
+
+						int id = atoi(s.substr(left, right - left).c_str());
+
+						id_list.push_back(id);
+					}
+
+					result[it.first / 100] = id_list;
+				}
+			}
+		}
+		catch (std::exception & e)
+		{
+			std::cout << "Exception querying meta: " << e.what() << std::endl;
+		}
+		return result;
+
+	}
+
+	std::vector<int> get_story(int id) {
+		std::vector<int> result;
+
+		if (meta == nullptr)
+		{
+			printf("Get Uma Failed!\n");
+			return result;
+		}
+
+		try
+		{
+
+			std::string findName;
+
+			findName = "SELECT n FROM a WHERE n like '%story/data/50/" + std::to_string(id) + "/storytimeline_%'";
+
+			SQLite::Statement query(*meta, findName.c_str());
+
+			std::vector<int> id_list;
+
+			while (query.executeStep())
+			{
+				std::string s = query.getColumn(0);
+
+				int left = s.rfind('_') + 1;
+				int right = s.length();
+
+				int id = atoi(s.substr(left, right - left).c_str());
+
+				id_list.push_back(id);
+			}
+
+			result = id_list;
+
+		}
+		catch (std::exception & e)
+		{
+			std::cout << "Exception querying meta: " << e.what() << std::endl;
+		}
+		return result;
+
+	}
+
 }

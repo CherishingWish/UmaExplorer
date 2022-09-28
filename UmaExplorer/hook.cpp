@@ -45,14 +45,13 @@ using phmap::flat_hash_map;
 using namespace std;
 using namespace std::literals;
 
-
+#pragma region GlobalValueDefine
 using njson = nlohmann::json;
 using namespace jsoncons;
 
 extern LPVOID copysheet;
 extern LPVOID getfield_addr;
 extern bool first;
-
 
 bool first = true;
 LPVOID copysheet = 0;
@@ -78,18 +77,30 @@ static void* Global_ProInfo;
 static void* namePro;
 
 static vector<pair<int, string>> umaList;
-static flat_hash_map<int, bool> selected_uma_id;
+static flat_hash_map<int, pair<bool, bool>> selected_uma_id;
+static flat_hash_map<int, std::vector<int>> chara_story;
 
 static bool is_enable_chara = false;
 static bool is_live_bypass = true;
+
+std::map<int, std::pair<int, int>> homeStandConvert{};
+int tmpAddId, tmpTargetId, tmpTargetCloth;
 
 static void* selectedMoveObj;
 
 #define WSTR2( s ) L##s
 #define WSTR( s ) WSTR2( s )
 
-int imguiwindow();
+#define ADD_HOOK(_name_, _fmt_) \
+	auto _name_##_offset = reinterpret_cast<void*>(_name_##_addr); \
+	printf(_fmt_, _name_##_offset); \
+	MH_CreateHook(_name_##_offset, _name_##_hook, &_name_##_orig); \
+	MH_EnableHook(_name_##_offset); 
 
+int imguiwindow();
+#pragma endregion
+
+#pragma region StructDefine
 struct Matrix4x4 // TypeDefIndex: 2062
 {
 	float m00; // 0x0
@@ -680,10 +691,11 @@ struct ObjectProInfo
 	int proLength;
 	vector<string> propertyNameList;
 };
+#pragma endregion
 
 namespace
 {
-
+#pragma region HookFunction
 	void create_debug_console()
 	{
 		AllocConsole();
@@ -1149,7 +1161,39 @@ namespace
 		return ret;
 	}
 
+	void* set_antialiasing_orig = nullptr;
+	int g_antialiasing = -1;
+	void set_antialiasing_hook(int value) {
+		printf("set AntiAliasing: %d\n", value);
+		return reinterpret_cast<decltype(set_antialiasing_hook)*>(set_antialiasing_orig)(g_antialiasing == -1 ? value : g_antialiasing);
+	}
 
+	void* CharacterBuildInfo_ctor_0_orig;
+	void CharacterBuildInfo_ctor_0_hook(void* _this, int charaId, int dressId, int controllerType, int headId,
+		int zekken, int mobId, int backDancerColorId, bool isUseDressDataHeadModelSubId, int audienceId,
+		int motionDressId, bool isEnableModelCache)
+	{
+		// printf("CharacterBuildInfo_ctor_0 charaId: %d, dressId: %d, headId: %d\n", charaId, dressId, headId);
+
+		if (controllerType == 0x5) {  // HomeStand
+			if (homeStandConvert.find(charaId) != homeStandConvert.end()) {
+				auto* replaceChar = &homeStandConvert.at(charaId);
+				charaId = replaceChar->first;
+				dressId = replaceChar->second;
+			}
+		}
+
+		return reinterpret_cast<decltype(CharacterBuildInfo_ctor_0_hook)*>(CharacterBuildInfo_ctor_0_orig)(_this, charaId, dressId, controllerType, headId, zekken, mobId, backDancerColorId, isUseDressDataHeadModelSubId, audienceId, motionDressId, isEnableModelCache);
+	}
+
+	void* CharacterBuildInfo_ctor_1_orig;
+	void CharacterBuildInfo_ctor_1_hook(void* _this, int cardId, int charaId, int dressId, int controllerType,
+		int headId, int zekken, int mobId, int backDancerColorId, int overrideClothCategory,
+		bool isUseDressDataHeadModelSubId, int audienceId, int motionDressId, bool isEnableModelCache)
+	{
+		// printf("CharacterBuildInfo_ctor_1 cardId: %d, charaId: %d, dressId: %d, headId: %d\n", cardId, charaId, dressId, headId);
+		return reinterpret_cast<decltype(CharacterBuildInfo_ctor_1_hook)*>(CharacterBuildInfo_ctor_1_orig)(_this, cardId, charaId, dressId, controllerType, headId, zekken, mobId, backDancerColorId, overrideClothCategory, isUseDressDataHeadModelSubId, audienceId, motionDressId, isEnableModelCache);
+	}
 
 
 	//
@@ -2403,7 +2447,25 @@ namespace
 
 			for (auto it : selected_uma_id) {
 				//printf("%d: %d\n", it.first, it.second);
-				if (it.second) {
+				if (it.second.first) {
+					if (it.second.second) {
+						//添加故事
+						int story_chara_id = it.first / 100;
+
+						vector<int> story_list = mdb::get_story(story_chara_id);
+
+						for (int i = 0; i < story_list.size(); i++) {
+
+							njson new_story = {};
+							new_story["chara_id"] = story_chara_id;
+							new_story["create_time"] = "2022-05-22 20:13:16";
+							new_story["new_flag"] = 0;
+							new_story["data_id"] = story_list[i];
+							j["data"]["event_data_array"][j["data"]["event_data_array"].size()] = new_story;
+						}
+					}
+
+
 					//添加角色
 					njson new_card = {};
 					new_card["card_id"] = it.first;
@@ -2416,8 +2478,15 @@ namespace
 					j["data"]["card_list"][j["data"]["card_list"].size()] = new_card;
 				}
 			}
+		}
 
-			
+		if (is_enable_chara) {
+			if (j["data"].contains("story_id") && j["data"].contains("event_contents_info")) {
+				j["data"]["chara_id"] = global_chara_id;
+				j["data"]["story_id"] = global_story_id;
+				printf("GetCharaID is:%d\n", global_chara_id);
+				printf("GetStoryID is:%d\n", global_story_id);
+			}
 		}
 
 		/*
@@ -2560,12 +2629,29 @@ namespace
 
 			}
 		}
-		
 
-		
+
+
 		if (is_enable_chara) {
+			if (j.contains("story_id") && j.contains("viewer_id")) {
+				global_story_id = j["story_id"];
+				global_chara_id = (global_story_id - 500000000) / 1000;
+				printf("CharaID is:%d\n", global_chara_id);
+				printf("StoryID is:%d\n", global_story_id);
+				j["story_id"] = 501024100;
+				//封包代码更改
+				std::vector<uint8_t> new_buffer;
+				ojson tmp = ojson::parse(j.dump());
+				msgpack::encode_msgpack(tmp, new_buffer);
 
-			if (j.contains("chara_id") && j.contains("viewer_id")) {
+				char* new_src = reinterpret_cast<char*>(&new_buffer[0]);
+				memset(src + 170, 0, srcSize - 170);
+				memcpy(src + 170, new_src, new_buffer.size());
+
+				srcSize = new_buffer.size() + 170;
+
+			}
+			else if (j.contains("chara_id") && j.contains("viewer_id")) {
 				j["chara_id"] = 1007;
 				if (j.contains("dress_id")) {
 					j["dress_id"] = 101;
@@ -2601,7 +2687,7 @@ namespace
 
 			}
 		}
-		
+
 
 		int ret = reinterpret_cast<decltype(LZ4_compress_default_ext_hook)*>(LZ4_compress_default_ext_orig)(
 			src, dst, srcSize, dstCapacity);
@@ -2614,10 +2700,9 @@ namespace
 
 		return ret;
 	}
+#pragma endregion
 
-
-
-
+#pragma region EnableHook
 	void bootstrap_carrot_juicer()
 	{
 		std::filesystem::create_directory("CarrotJuicer");
@@ -3667,7 +3752,21 @@ namespace
 		void* Global_ProInfo = reftype_hook(assembly, (umastring*)il2cpp_symbols::get_string("System.Reflection.PropertyInfo"));
 		namePro = typePro_hook(Global_ProInfo, il2cpp_symbols::get_string("Name"));
 
-		
+		const auto CharacterBuildInfo_ctor_0_addr =
+			il2cpp_symbols::get_method_pointer(
+				"umamusume.dll", "Gallop",
+				"CharacterBuildInfo", ".ctor", 11
+			);
+		ADD_HOOK(CharacterBuildInfo_ctor_0, "CharacterBuildInfo_ctor_0 at %p\n");
+
+		const auto CharacterBuildInfo_ctor_1_addr =
+			il2cpp_symbols::get_method_pointer(
+				"umamusume.dll", "Gallop",
+				"CharacterBuildInfo", ".ctor", 13
+			);
+		ADD_HOOK(CharacterBuildInfo_ctor_1, "CharacterBuildInfo_ctor_1 at %p\n");
+
+
 
 		//执行GUI程序
 		thread([]() {
@@ -3681,6 +3780,8 @@ namespace
 
 
 	}
+#pragma endregion
+
 
 	void* load_library_w_orig = nullptr;
 
@@ -3703,6 +3804,7 @@ namespace
 	}
 }
 
+#pragma region GuiFunc
 static flat_hash_map<void*, ObjectTree> ObjDic;
 static flat_hash_map<void*, ObjectProInfo> ObjProDic;
 static vector<ObjectWindowInfo> ObjWindowList;
@@ -4054,7 +4156,7 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 		string trueProName = propertyList[*index];
 		//printf("New Name is %s\n", trueProName.c_str());
 
-		
+
 
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
@@ -4295,7 +4397,7 @@ void getFieldWindow(void* obj, void* _class, int i = 0) {
 }
 
 //创建PropertyWindow
-void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nullptr,int i = 0) {
+void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nullptr, int i = 0) {
 	ImGuiTableFlags flags = 1;
 
 	string componentProperty = to_string(int(obj)) + "_property_" + to_string(i);
@@ -4307,7 +4409,7 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 		if (!ObjProDic.count(obj)) {
 			ObjectProInfo proInfo;
 			proInfo.type = objType_hook(obj);
-			void* tempProperties = typePros_hook(proInfo.type, 4|8|16|32);
+			void* tempProperties = typePros_hook(proInfo.type, 4 | 8 | 16 | 32);
 			proInfo.proLength = il2cpp_symbols::get_array_length(tempProperties);
 
 			vector<string> proNameList;
@@ -4334,7 +4436,7 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 			ImGui::TableSetupColumn("Property Method");
 			ImGui::TableHeadersRow();
 
-			
+
 
 			try {
 				int index = 0;
@@ -4346,7 +4448,7 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 					ObjProDic.erase(obj);
 				}
 			}
-			
+
 
 			ImGui::EndTable();
 		}
@@ -4508,7 +4610,10 @@ static void HelpMarker(const char* desc)
 		ImGui::EndTooltip();
 	}
 }
+#pragma endregion
 
+
+#pragma region GuiMain
 //************************************************************************************************************
 static ID3D11Device* g_pd3dDevice = NULL;
 static ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
@@ -4530,7 +4635,7 @@ int imguiwindow()
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("UmaExplorer"), NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.094"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+	HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("UmaExplorer V0.095"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
@@ -4688,7 +4793,7 @@ int imguiwindow()
 		if (show_tool_window)
 		{
 			ImGui::Begin("Tool Window", &show_tool_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-			
+
 			if (ImGui::TreeNode("Set FPS(60 at default)")) {
 				ImGui::InputInt("##Set FPS", &temp_fps);
 				ImGui::SameLine();
@@ -4701,35 +4806,101 @@ int imguiwindow()
 				ImGui::TreePop();
 			}
 
+			if (ImGui::TreeNode("Set AntiAliasing(-1 at default)")) {
+				/*
+				ImGui::InputInt("##Set AntiAliasing", &g_antialiasing);
+				ImGui::SameLine();
+				ImGui::Spacing();
+				ImGui::SameLine();
+				*/
+
+				if (ImGui::Button("Disable MSAA##AntiAliasing")) {
+					g_antialiasing = 0;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x2##AntiAliasing")) {
+					g_antialiasing = 2;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x4##AntiAliasing")) {
+					g_antialiasing = 4;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				if (ImGui::Button("MSAA x8##AntiAliasing")) {
+					g_antialiasing = 8;
+					set_antialiasing_hook(g_antialiasing);
+				}
+				ImGui::TreePop();
+			}
+
+			std::vector<int> deleteList{};
+			if (ImGui::TreeNode("Change HomeStand Character")) {
+				for (auto i : homeStandConvert) {
+					ImGui::Text("%d -> %d(%d)", i.first, i.second.first, i.second.second);
+					ImGui::SameLine();
+					if (ImGui::Button("Delete##HomeStand")) {
+						deleteList.push_back(i.first);
+					}
+				}
+
+				ImGui::NewLine();
+				ImGui::Text("Add Character Replace");
+				ImGui::Text("Orig Char ID (eg.1046)");
+				ImGui::SameLine();
+				ImGui::InputInt("##Set HomeStandId", &tmpAddId);
+
+				ImGui::Text("Replace Char ID (eg.1046)");
+				ImGui::SameLine();
+				ImGui::InputInt("##Set HomeStandTId", &tmpTargetId);
+
+				ImGui::Text("Replace Cloth ID (eg.104601)");
+				ImGui::SameLine();
+				ImGui::InputInt("##Set HomeStandCId", &tmpTargetCloth);
+
+
+				if (ImGui::Button("Add##HomeStand")) {
+					homeStandConvert.emplace(tmpAddId, std::make_pair(tmpTargetId, tmpTargetCloth));
+				}
+
+				ImGui::TreePop();
+			}
+			for (auto i : deleteList) {
+				homeStandConvert.erase(i);
+			}
+
 			ImGui::Separator();
 
 			ImGui::Checkbox("Bypass Live 205 Error", &is_live_bypass); ImGui::SameLine(); HelpMarker("Will replace characters after live end.");
-			
+
 			ImGui::Separator();
-			
+
 			ImGui::Checkbox("##Enable Character Profile", &is_enable_chara); ImGui::SameLine();
 			ImGui::BeginDisabled(!is_enable_chara);
 			if (ImGui::TreeNode("Enable Character Profile")) {
 				ImGui::Text("Select characters you want to have before tap game start button.");
-				ImGui::SameLine(); HelpMarker("Only profile is safe, otherwhere is risky!"); ImGui::SameLine();
+				ImGui::SameLine(); HelpMarker("Only profile is safe, otherwhere is risky! and add to many story will cause unknown issue."); ImGui::SameLine();
 
 				if (ImGui::Button("Select All")) {
 					for (int uma = 0; uma < umaList.size(); uma++) {
 						int id = umaList[uma].first;
-						selected_uma_id[id] = true;
+						selected_uma_id[id].first = true;
 					}
 				}
-				
+
 				for (int uma = 0; uma < umaList.size(); uma++) {
 					int id = umaList[uma].first;
 					string name = umaList[uma].second;
-					ImGui::Checkbox((to_string(id)+": "+name).c_str(), &selected_uma_id[id]);
+					ImGui::Checkbox((to_string(id) + ": " + name).c_str(), &selected_uma_id[id].first);
+					if (selected_uma_id[id].first) {
+						ImGui::SameLine();
+						ImGui::Checkbox(("Unlock Story##" + name).c_str(), &selected_uma_id[id].second);
+					}
 				}
 
 				ImGui::TreePop();
 			}
 			ImGui::EndDisabled();
-			
+
 			ImGui::End();
 		}
 
@@ -4772,11 +4943,11 @@ int imguiwindow()
 		if (show_info_window) {
 			if (inst_obj_hook(ObjDic[selected_obj].instanceID) == selected_obj) {
 				ImGui::Begin("Info Window", &show_info_window);
-				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str()); 
-				ImGui::Checkbox("Edit", &enable_edit); ImGui::SameLine(); 
+				ImGui::Text(("Object Name: " + ObjDic[selected_obj].name).c_str());
+				ImGui::Checkbox("Edit", &enable_edit); ImGui::SameLine();
 				HelpMarker("Use QWEASD to control position, and UIOJKL to control rotation, or edit it directly."); ImGui::SameLine();
 				ImGui::Checkbox("Is Camera", &camera_base); ImGui::SameLine();
-				HelpMarker("Movement will base on camera look direction, and you can control rotation with mouse when hold Shift.");
+				HelpMarker("Movement will base on camera look direction, and you can control rotation with mouse when hold MouseRight.");
 				Vector3 V_pos = position_hook(selected_obj);
 				Vector3 V_rot = rotation_hook(selected_obj);
 				Vector3 V_scale = scale_hook(selected_obj);
@@ -4828,17 +4999,17 @@ int imguiwindow()
 									V_pos.x += 0.05 * forward.x;
 									V_pos.y += 0.05 * forward.y;
 									V_pos.z += 0.05 * forward.z;
-								}				 
+								}
 								if (!strcmp(ImGui::GetKeyName(key), "S")) {
 									V_pos.x -= 0.05 * forward.x;
 									V_pos.y -= 0.05 * forward.y;
 									V_pos.z -= 0.05 * forward.z;
-								}				 
+								}
 								if (!strcmp(ImGui::GetKeyName(key), "A")) {
 									V_pos.x -= 0.05 * right.x;
 									V_pos.y -= 0.05 * right.y;
 									V_pos.z -= 0.05 * right.z;
-								}				 
+								}
 								if (!strcmp(ImGui::GetKeyName(key), "D")) {
 									V_pos.x += 0.05 * right.x;
 									V_pos.y += 0.05 * right.y;
@@ -4854,13 +5025,13 @@ int imguiwindow()
 									V_pos.y -= 0.05 * up.y;
 									V_pos.z -= 0.05 * up.z;
 								}
-								if (!strcmp(ImGui::GetKeyName(key), "ModShift")) {
+								if (!strcmp(ImGui::GetKeyName(key), "MouseRight")) {
 									ImGuiIO& io = ImGui::GetIO();
 									V_rot.x += 0.1 * io.MouseDelta.y;
 									V_rot.y += 0.1 * io.MouseDelta.x;
-								}		
+								}
 							}
-							
+
 							if (!strcmp(ImGui::GetKeyName(key), "I")) {
 								V_rot.x -= 0.2;
 							}
@@ -4881,11 +5052,11 @@ int imguiwindow()
 							}
 						}
 					}
-					
 
-					
 
-					
+
+
+
 
 					localP_hook(selected_obj, V_pos, 1024);
 					localE_hook(selected_obj, V_rot, 1024);
@@ -5016,6 +5187,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 	return ::DefWindowProc(hWnd, msg, wParam, lParam);
 }
+#pragma endregion
+
+
+
 
 //关于如何召唤出win32API
 /*
@@ -5146,9 +5321,6 @@ int usewindow() {
 */
 
 
-
-
-
 void attach()
 {
 	create_debug_console();
@@ -5168,8 +5340,12 @@ void attach()
 
 	umaList = mdb::get_uma_all();
 	for (int i = 0; i < umaList.size(); i++) {
-		selected_uma_id[umaList[i].first] = false;
+		selected_uma_id[umaList[i].first].first = false;
+		selected_uma_id[umaList[i].first].second = false;
 	}
+
+	//chara_story = mdb::get_story_all(selected_uma_id);
+
 }
 
 void detach()
