@@ -131,7 +131,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="EXNOA-CarrotJuicer.rc">
+    <ResourceCompile Include="UmaExplorer.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>

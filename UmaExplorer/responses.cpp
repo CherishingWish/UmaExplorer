@@ -222,7 +222,7 @@ namespace responses
 				{
 					// tool/start_session, close master.mdb in case the game wants to update it
 					std::cout << "Received tool/start_session, unloading master.mdb." << std::endl;
-					//mdb::unload();
+					mdb::unload();
 				}
 				else if (data.contains("common_define") && data.contains("res_version"))
 				{

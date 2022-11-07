@@ -82,6 +82,7 @@ static flat_hash_map<int, std::vector<int>> chara_story;
 
 static bool is_enable_chara = false;
 static bool is_live_bypass = true;
+static bool auto_fullscreen = true;
 
 std::map<int, std::pair<int, int>> homeStandConvert{};
 int tmpAddId, tmpTargetId, tmpTargetCloth;
@@ -1092,12 +1093,30 @@ namespace
 		}
 	}
 
+	void* localPI_orig = nullptr;
+
+	void localPI_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localPI_hook)*>(localPI_orig)(_this, value, 0);
+		}
+	}
+
 	void* globalP_orig = nullptr;
 
 	void globalP_hook(void* _this, Vector3 value, int code = 0)
 	{
 		if (_this != selectedMoveObj or code == 1024) {
 			reinterpret_cast<decltype(globalP_hook)*>(globalP_orig)(_this, value, 0);
+		}
+	}
+
+	void* globalPI_orig = nullptr;
+
+	void globalPI_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(globalPI_hook)*>(globalPI_orig)(_this, value, 0);
 		}
 	}
 
@@ -2150,15 +2169,12 @@ namespace
 
 		bool need_fullscreen = false;
 
-		if (is_virt() && r.width / static_cast<double>(r.height) == (9.0 / 16.0))
+		if (is_virt() && r.width / static_cast<double>(r.height) == (9.0 / 16.0) && auto_fullscreen)
 			need_fullscreen = true;
-		else if (!is_virt() && r.width / static_cast<double>(r.height) == (16.0 / 9.0))
+		else if (!is_virt() && r.width / static_cast<double>(r.height) == (16.0 / 9.0) && auto_fullscreen)
 			need_fullscreen = true;
 
 		printf("width is %d, height is %d \n", width, height);
-
-		width = 528;
-		height = 940;
 
 		printf("r.width is %d, r.height is %d \n", r.width, r.height);
 
@@ -2166,7 +2182,7 @@ namespace
 			need_fullscreen ? r.width : width, need_fullscreen ? r.height : height, need_fullscreen
 			);
 	}
-	/*
+	
 	void adjust_size()
 	{
 		thread([]() {
@@ -2183,7 +2199,7 @@ namespace
 			}).detach();
 	}
 
-
+	/*
 	void* getlist_orig = nullptr;
 
 	int getlist_hook(void* _this)
@@ -2444,6 +2460,8 @@ namespace
 		njson j = njson::parse(os.str());
 
 		if (j["data"].contains("common_define")) {
+
+			mdb::init();
 
 			for (auto it : selected_uma_id) {
 				//printf("%d: %d\n", it.first, it.second);
@@ -3075,16 +3093,13 @@ namespace
 		MH_CreateHook((LPVOID)spring_addr, spring_hook, &spring_orig);
 		MH_EnableHook((LPVOID)spring_addr);
 		*/
-		auto fps_addr = il2cpp_symbols::get_method_pointer(
-			"UnityEngine.CoreModule.dll", "UnityEngine",
-			"Application", "set_targetFrameRate", 1
-		);
+		auto fps_addr = il2cpp_resolve_icall("UnityEngine.Application::set_targetFrameRate(System.Int32)");
 
 		printf("fps_addr at %p\n", fps_addr);
 
 		MH_CreateHook((LPVOID)fps_addr, fps_hook, &fps_orig);
 		MH_EnableHook((LPVOID)fps_addr);
-		/*
+		
 		auto res_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
 			"Screen", "SetResolution", 3
@@ -3107,8 +3122,8 @@ namespace
 				"Screen", "get_currentResolution", 0
 			)
 			);
-		*/
-		//adjust_size();
+
+		adjust_size();
 
 
 
@@ -3654,6 +3669,16 @@ namespace
 		MH_CreateHook((LPVOID)localP_addr, localP_hook, &localP_orig);
 		MH_EnableHook((LPVOID)localP_addr);
 
+		auto localPI_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_localPosition_Injected", 1
+		);
+
+		printf("localPI_addr at %p\n", localPI_addr);
+
+		MH_CreateHook((LPVOID)localPI_addr, localPI_hook, &localPI_orig);
+		MH_EnableHook((LPVOID)localPI_addr);
+
 		//尝试Hook全局位置的设置
 
 		auto globalP_addr = il2cpp_symbols::get_method_pointer(
@@ -3665,6 +3690,16 @@ namespace
 
 		MH_CreateHook((LPVOID)globalP_addr, globalP_hook, &globalP_orig);
 		MH_EnableHook((LPVOID)globalP_addr);
+
+		auto globalPI_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_position_Injected", 1
+		);
+
+		printf("globalPI_addr at %p\n", globalPI_addr);
+
+		MH_CreateHook((LPVOID)globalPI_addr, globalPI_hook, &globalPI_orig);
+		MH_EnableHook((LPVOID)globalPI_addr);
 
 		//尝试Hook本地欧拉的设置
 
@@ -3745,6 +3780,11 @@ namespace
 
 		MH_CreateHook((LPVOID)right_addr, right_hook, &right_orig);
 		MH_EnableHook((LPVOID)right_addr);
+
+		auto set_antialiasing_addr = il2cpp_resolve_icall("UnityEngine.QualitySettings::set_antiAliasing(System.Int32)");
+
+		MH_CreateHook((LPVOID)set_antialiasing_addr, set_antialiasing_hook, &set_antialiasing_orig);
+		MH_EnableHook((LPVOID)set_antialiasing_addr);
 
 		printf("Start Get Info\n");
 
@@ -4874,6 +4914,10 @@ int imguiwindow()
 
 			ImGui::Separator();
 
+			ImGui::Checkbox("Auto Fullscreen", &auto_fullscreen);
+
+			ImGui::Separator();
+
 			ImGui::Checkbox("##Enable Character Profile", &is_enable_chara); ImGui::SameLine();
 			ImGui::BeginDisabled(!is_enable_chara);
 			if (ImGui::TreeNode("Enable Character Profile")) {
@@ -5343,6 +5387,7 @@ void attach()
 		selected_uma_id[umaList[i].first].first = false;
 		selected_uma_id[umaList[i].first].second = false;
 	}
+
 
 	//chara_story = mdb::get_story_all(selected_uma_id);
 
