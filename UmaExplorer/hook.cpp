@@ -1156,6 +1156,15 @@ namespace
 		}
 	}
 
+	void* localS_orig = nullptr;
+
+	void localS_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localS_hook)*>(localS_orig)(_this, value, 0);
+		}
+	}
+
 	void* forward_orig = nullptr;
 
 	Vector3 forward_hook(void* _this)
@@ -2667,7 +2676,7 @@ namespace
 				memcpy(src + 170, new_src, new_buffer.size());
 
 				srcSize = new_buffer.size() + 170;
-
+				
 			}
 			else if (j.contains("chara_id") && j.contains("viewer_id")) {
 				j["chara_id"] = 1007;
@@ -3659,20 +3668,28 @@ namespace
 
 		//尝试Hook本地位置的设置
 
+		
 		auto localP_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
 			"Transform", "set_localPosition", 1
 		);
+		
+
+		//auto localP_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_localPosition(UnityEngine.Vector3)");
 
 		printf("localP_addr at %p\n", localP_addr);
 
 		MH_CreateHook((LPVOID)localP_addr, localP_hook, &localP_orig);
 		MH_EnableHook((LPVOID)localP_addr);
 
+		/*
 		auto localPI_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
 			"Transform", "set_localPosition_Injected", 1
 		);
+		*/
+
+		auto localPI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_localPosition_Injected(UnityEngine.Vector3)");
 
 		printf("localPI_addr at %p\n", localPI_addr);
 
@@ -3681,20 +3698,28 @@ namespace
 
 		//尝试Hook全局位置的设置
 
+		
 		auto globalP_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
 			"Transform", "set_position", 1
 		);
+		
+
+		//auto globalP_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_position(UnityEngine.Vector3)");
 
 		printf("globalP_addr at %p\n", globalP_addr);
 
 		MH_CreateHook((LPVOID)globalP_addr, globalP_hook, &globalP_orig);
 		MH_EnableHook((LPVOID)globalP_addr);
 
+		/*
 		auto globalPI_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
 			"Transform", "set_position_Injected", 1
 		);
+		*/
+
+		auto globalPI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_position_Injected(UnityEngine.Vector3)");
 
 		printf("globalPI_addr at %p\n", globalPI_addr);
 
@@ -3748,6 +3773,18 @@ namespace
 
 		MH_CreateHook((LPVOID)globalQ_addr, globalQ_hook, &globalQ_orig);
 		MH_EnableHook((LPVOID)globalQ_addr);
+
+		//尝试Hook缩放
+
+		auto localS_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Transform", "set_localScale", 1
+		);
+
+		printf("localS_addr at %p\n", localS_addr);
+
+		MH_CreateHook((LPVOID)localS_addr, localS_hook, &localS_orig);
+		MH_EnableHook((LPVOID)localS_addr);
 
 		//获得Transform的朝向向量
 
@@ -5010,6 +5047,7 @@ int imguiwindow()
 
 					V_pos.x = position[0]; V_pos.y = position[1]; V_pos.z = position[2];
 					V_rot.x = rotation[0]; V_rot.y = rotation[1]; V_rot.z = rotation[2];
+					V_scale.x = scale[0]; V_scale.y = scale[1]; V_scale.z = scale[2];
 
 					const ImGuiKey key_first = 0;
 					for (ImGuiKey key = key_first; key < ImGuiKey_COUNT; key++) {
@@ -5102,8 +5140,9 @@ int imguiwindow()
 
 
 
-					localP_hook(selected_obj, V_pos, 1024);
+					localPI_hook(selected_obj, V_pos, 1024);
 					localE_hook(selected_obj, V_rot, 1024);
+					localS_hook(selected_obj, V_scale, 1024);
 				}
 				else {
 					selectedMoveObj = nullptr;
