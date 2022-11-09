@@ -889,6 +889,47 @@ namespace
 
 	}
 
+	void* setMonoActive_orig = nullptr;
+
+	void setMonoActive_hook(void* _this, bool value)
+	{
+
+		reinterpret_cast<decltype(setMonoActive_hook)*>(setMonoActive_orig)(_this, value);
+
+		return;
+
+	}
+
+	void* getMonoActive_orig = nullptr;
+
+	bool getMonoActive_hook(void* _this)
+	{
+
+		bool ret = reinterpret_cast<decltype(getMonoActive_hook)*>(getMonoActive_orig)(_this);
+
+		return ret;
+	}
+	
+	void* setAnimatorCtroller_orig = nullptr;
+
+	void setAnimatorCtroller_hook(void* _this,  void* controller)
+	{
+
+		reinterpret_cast<decltype(setAnimatorCtroller_hook)*>(setAnimatorCtroller_orig)(_this, controller);
+
+		return ;
+	}
+
+	void* Destroy_orig = nullptr;
+
+	void Destroy_hook(void* _target)
+	{
+
+		reinterpret_cast<decltype(Destroy_hook)*>(Destroy_orig)(_target);
+
+		return;
+	}
+
 	void* position_orig = nullptr;
 
 	Vector3 position_hook(void* _this)
@@ -3446,6 +3487,50 @@ namespace
 		MH_CreateHook((LPVOID)setActive_addr, setActive_hook, &setActive_orig);
 		MH_EnableHook((LPVOID)setActive_addr);
 
+		//设置组件开关
+		auto setMonoActive_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"MonoBehaviour", "set_enabled", 1
+		);
+
+		printf("setMonoActive_addr at %p\n", setMonoActive_addr);
+
+		MH_CreateHook((LPVOID)setMonoActive_addr, setMonoActive_hook, &setMonoActive_orig);
+		MH_EnableHook((LPVOID)setMonoActive_addr);
+
+		//获取组件开关
+		auto getMonoActive_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"MonoBehaviour", "get_enabled", 0
+		);
+
+		printf("setMonoActive_addr at %p\n", getMonoActive_addr);
+
+		MH_CreateHook((LPVOID)getMonoActive_addr, getMonoActive_hook, &getMonoActive_orig);
+		MH_EnableHook((LPVOID)getMonoActive_addr);
+
+		//设置动画机
+		auto getAnimatorCtroller_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.AnimationModule.dll", "UnityEngine",
+			"Animator", "set_runtimeAnimatorController", 1
+		);
+
+		printf("AnimatorCtroller_addr at %p\n", getMonoActive_addr);
+
+		MH_CreateHook((LPVOID)getAnimatorCtroller_addr, setAnimatorCtroller_hook, &setAnimatorCtroller_orig);
+		MH_EnableHook((LPVOID)getAnimatorCtroller_addr);
+
+		//删除
+		auto Destroy_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Object", "Destroy", 1
+		);
+
+		printf("Destroy_addr at %p\n", getMonoActive_addr);
+
+		MH_CreateHook((LPVOID)Destroy_addr, Destroy_hook, &Destroy_orig);
+		MH_EnableHook((LPVOID)Destroy_addr);
+
 		//从Transform获取本地Position
 		auto position_addr = il2cpp_symbols::get_method_pointer(
 			"UnityEngine.CoreModule.dll", "UnityEngine",
@@ -4505,6 +4590,15 @@ void show_components(void* currentObj) {
 	for (int i = 0; i < components.size(); i++) {
 		if (ImGui::TreeNode(components[i], getTypeName(UmaGetString(objectname_hook(components[i]))).c_str())) {
 			void* _class = il2cpp_symbols::object_get_class(components[i]);
+			
+			
+			if (ImGui::Button("Test")) {
+				Destroy_hook(components[i]);
+			}
+
+			if (ImGui::Button("Disable")) {
+				setMonoActive_hook(components[i], false);
+			}
 
 			getFieldWindow(components[i], _class, i);
 
