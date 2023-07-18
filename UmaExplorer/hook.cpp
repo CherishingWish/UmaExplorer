@@ -3294,8 +3294,8 @@ namespace
 		//开始尝试获取Type
 
 		auto type_addr = il2cpp_symbols::get_method_pointer(
-			"Plugins.dll", "RuntimeInspectorNamespace",
-			"RuntimeInspectorUtils", "GetType", 1
+			"mscorlib.dll", "System",
+			"Type", "GetType", 1
 		);
 
 		printf("type_addr at %p\n", type_addr);
