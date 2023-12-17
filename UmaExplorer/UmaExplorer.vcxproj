@@ -79,6 +79,7 @@
     <ClCompile Include="mdb.cpp" />
     <ClCompile Include="proxy.cpp" />
     <ClCompile Include="responses.cpp" />
+    <ClCompile Include="shader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="version.def" />
@@ -100,6 +101,7 @@
     <ClInclude Include="mdb.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="responses.hpp" />
+    <ClInclude Include="shader.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="UmaExplorer.rc" />

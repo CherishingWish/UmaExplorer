@@ -39,6 +39,8 @@
 
 #include "parallel_hashmap/phmap.h"
 
+#include "shader.h"
+
 using phmap::flat_hash_map;
 
 
@@ -122,6 +124,14 @@ struct Matrix4x4 // TypeDefIndex: 2062
 	float m33; // 0x3C
 };
 
+struct Vector4 // TypeDefIndex: 2063
+{
+	float x; // 0x0
+	float y; // 0x4
+	float z; // 0x8
+	float w;
+};
+
 struct Vector3 // TypeDefIndex: 2063
 {
 	float x; // 0x0
@@ -142,6 +152,22 @@ struct Quaternion // TypeDefIndex: 2064
 	float y; // 0x4
 	float z; // 0x8
 	float w; // 0xC
+
+	Quaternion(float _w, float _x, float _y, float _z)
+	{
+		w = _w;
+		x = _x;
+		y = _y;
+		z = _z;
+	}
+};
+
+struct Color
+{
+	float r; // 0x0
+	float g; // 0x4
+	float b; // 0x8
+	float a; // 0xC
 };
 
 struct FacialDataUpdateInfo // TypeDefIndex: 16768
@@ -692,6 +718,14 @@ struct ObjectProInfo
 	int proLength;
 	vector<string> propertyNameList;
 };
+
+struct ObjectShaderInfo
+{
+	void* shader;
+	int proLength;
+	vector<string> propertyNameList;
+	vector<int> propertyNameIDList;
+};
 #pragma endregion
 
 namespace
@@ -1188,6 +1222,15 @@ namespace
 		}
 	}
 
+	void* localQI_orig = nullptr;
+
+	void localQI_hook(void* _this, Quaternion value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localQI_hook)*>(localQI_orig)(_this, value, 0);
+		}
+	}
+
 	void* globalQ_orig = nullptr;
 
 	void globalQ_hook(void* _this, Quaternion value, int code = 0)
@@ -1197,12 +1240,47 @@ namespace
 		}
 	}
 
+	void* globalQI_orig = nullptr;
+
+	void globalQI_hook(void* _this, Quaternion value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(globalQI_hook)*>(globalQI_orig)(_this, value, 0);
+		}
+	}
+
+	void* E2Q_orig = nullptr;
+
+	Quaternion E2Q_hook(float x, float y, float z)
+	{
+		Quaternion ret = reinterpret_cast<decltype(E2Q_hook)*>(E2Q_orig)(x, y, z);
+		return ret;
+	}
+
 	void* localS_orig = nullptr;
 
 	void localS_hook(void* _this, Vector3 value, int code = 0)
 	{
 		if (_this != selectedMoveObj or code == 1024) {
 			reinterpret_cast<decltype(localS_hook)*>(localS_orig)(_this, value, 0);
+		}
+	}
+
+	void* localSI_orig = nullptr;
+
+	void localSI_hook(void* _this, Vector3 value, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(localSI_hook)*>(localSI_orig)(_this, value, 0);
+		}
+	}
+
+	void* lookatI_orig = nullptr;
+
+	void lookatI_hook(void* _this, Vector3 worldPosition, Vector3 worldUp, int code = 0)
+	{
+		if (_this != selectedMoveObj or code == 1024) {
+			reinterpret_cast<decltype(lookatI_hook)*>(lookatI_orig)(_this, worldPosition, worldUp, 0);
 		}
 	}
 
@@ -1227,6 +1305,45 @@ namespace
 	Vector3 right_hook(void* _this)
 	{
 		Vector3 ret = reinterpret_cast<decltype(right_hook)*>(right_orig)(_this);
+		return ret;
+	}
+
+	void* has_shader_property_orig = nullptr;
+
+	bool has_shader_property_hook(void* _this, int name)
+	{
+		bool ret = reinterpret_cast<decltype(has_shader_property_hook)*>(has_shader_property_orig)(_this, name);
+		return ret;
+	}
+
+	void* shader_nameid_orig = nullptr;
+
+	int shader_nameid_hook(umastring* name)
+	{
+		int ret = reinterpret_cast<decltype(shader_nameid_hook)*>(shader_nameid_orig)(name);
+		return ret;
+	}
+
+	void* shader_get_float_orig = nullptr;
+
+	float shader_get_float_hook(void* _this, int nameid)
+	{
+		float ret = reinterpret_cast<decltype(shader_get_float_hook)*>(shader_get_float_orig)(_this, nameid);
+		return ret;
+	}
+
+	void* shader_get_color_orig = nullptr;
+
+	void shader_get_color_hook(void* _this, int nameid, Color* ret)
+	{
+		reinterpret_cast<decltype(shader_get_color_hook)*>(shader_get_color_orig)(_this, nameid, ret);
+	}
+
+	void* shader_get_vector_orig = nullptr;
+
+	Vector4 shader_get_vector_hook(void* _this, int nameid)
+	{
+		Vector4 ret = reinterpret_cast<decltype(shader_get_vector_hook)*>(shader_get_vector_orig)(_this, nameid);
 		return ret;
 	}
 
@@ -3335,8 +3452,8 @@ namespace
 		//开始尝试获取Type
 
 		auto type_addr = il2cpp_symbols::get_method_pointer(
-			"Plugins.dll", "RuntimeInspectorNamespace",
-			"RuntimeInspectorUtils", "GetType", 1
+			"mscorlib.dll", "System",
+			"Type", "GetType", 1
 		);
 
 		printf("type_addr at %p\n", type_addr);
@@ -3774,6 +3891,8 @@ namespace
 		);
 		*/
 
+		//尝试Hook本地位置的设置(注入版/有效)
+
 		auto localPI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_localPosition_Injected(UnityEngine.Vector3)");
 
 		printf("localPI_addr at %p\n", localPI_addr);
@@ -3803,6 +3922,8 @@ namespace
 			"Transform", "set_position_Injected", 1
 		);
 		*/
+
+		//尝试Hook全局位置的设置(注入版/有效)
 
 		auto globalPI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_position_Injected(UnityEngine.Vector3)");
 
@@ -3847,6 +3968,15 @@ namespace
 		MH_CreateHook((LPVOID)localQ_addr, localQ_hook, &localQ_orig);
 		MH_EnableHook((LPVOID)localQ_addr);
 
+		//尝试Hook本地四元的设置(注入版)
+
+		auto localQI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_localRotation_Injected(UnityEngine.Quaternion)");
+
+		printf("localQI_addr at %p\n", localQI_addr);
+
+		MH_CreateHook((LPVOID)localQI_addr, localQI_hook, &localQI_orig);
+		MH_EnableHook((LPVOID)localQI_addr);
+
 		//尝试Hook全局四元的设置
 
 		auto globalQ_addr = il2cpp_symbols::get_method_pointer(
@@ -3859,6 +3989,27 @@ namespace
 		MH_CreateHook((LPVOID)globalQ_addr, globalQ_hook, &globalQ_orig);
 		MH_EnableHook((LPVOID)globalQ_addr);
 
+		//尝试Hook全局四元的设置(注入版)
+
+		auto globalQI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_rotation_Injected(UnityEngine.Quaternion)");
+
+		printf("globalQI_addr at %p\n", globalQI_addr);
+
+		MH_CreateHook((LPVOID)globalQI_addr, globalQI_hook, &globalQI_orig);
+		MH_EnableHook((LPVOID)globalQI_addr);
+
+		//尝试Hook欧拉转四元
+
+		auto E2Q_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Quaternion", "Euler", 3
+		);
+
+		printf("E2Q_addr at %p\n", E2Q_addr);
+
+		MH_CreateHook((LPVOID)E2Q_addr, E2Q_hook, &E2Q_orig);
+		MH_EnableHook((LPVOID)E2Q_addr);
+
 		//尝试Hook缩放
 
 		auto localS_addr = il2cpp_symbols::get_method_pointer(
@@ -3870,6 +4021,24 @@ namespace
 
 		MH_CreateHook((LPVOID)localS_addr, localS_hook, &localS_orig);
 		MH_EnableHook((LPVOID)localS_addr);
+
+		//尝试Hook缩放(注入版)
+
+		auto localSI_addr = il2cpp_resolve_icall("UnityEngine.Transform::set_localScale_Injected(UnityEngine.Vector3)");
+
+		printf("localSI_addr at %p\n", localSI_addr);
+
+		MH_CreateHook((LPVOID)localSI_addr, localSI_hook, &localSI_orig);
+		MH_EnableHook((LPVOID)localSI_addr);
+
+		//尝试Hook看向方向(注入版)
+
+		auto lookatI_addr = il2cpp_resolve_icall("UnityEngine.Transform::Internal_LookAt_Injected(UnityEngine.Vector3, UnityEngine.Vector3)");
+
+		printf("lookatI_addr at %p\n", lookatI_addr);
+
+		MH_CreateHook((LPVOID)lookatI_addr, lookatI_hook, &lookatI_orig);
+		MH_EnableHook((LPVOID)lookatI_addr);
 
 		//获得Transform的朝向向量
 
@@ -3902,6 +4071,61 @@ namespace
 
 		MH_CreateHook((LPVOID)right_addr, right_hook, &right_orig);
 		MH_EnableHook((LPVOID)right_addr);
+
+		//获取目标Shader属性
+
+		
+		auto has_shader_property_addr = il2cpp_resolve_icall("UnityEngine.Material::HasProperty(System.Int32)");
+
+		printf("has_shader_property_addr at %p\n", has_shader_property_addr);
+
+		MH_CreateHook((LPVOID)has_shader_property_addr, has_shader_property_hook, &has_shader_property_orig);
+		MH_EnableHook((LPVOID)has_shader_property_addr);
+
+		//获取材质Float
+
+		auto shader_get_float_addr = il2cpp_symbols::get_method_pointer_re(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Material", "GetFloat", 1, 2
+		);
+
+		printf("shader_get_float_addr at %p\n", shader_get_float_addr);
+
+		MH_CreateHook((LPVOID)shader_get_float_addr, shader_get_float_hook, &shader_get_float_orig);
+		MH_EnableHook((LPVOID)shader_get_float_addr);
+
+		//获取材质Color
+
+		auto shader_get_color_addr = il2cpp_resolve_icall("UnityEngine.Material::GetColorImpl_Injected(System.Int32, UnityEngine.Color)");
+
+		printf("shader_get_color_addr at %p\n", shader_get_color_addr);
+
+		MH_CreateHook((LPVOID)shader_get_color_addr, shader_get_color_hook, &shader_get_color_orig);
+		MH_EnableHook((LPVOID)shader_get_color_addr);
+
+		//获取材质Vector
+
+		auto shader_get_vector_addr = il2cpp_symbols::get_method_pointer_re(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Material", "GetVector", 1, 2
+		);
+
+		printf("shader_get_vector_addr at %p\n", shader_get_vector_addr);
+
+		MH_CreateHook((LPVOID)shader_get_vector_addr, shader_get_vector_hook, &shader_get_vector_orig);
+		MH_EnableHook((LPVOID)shader_get_vector_addr);
+		
+
+		auto shader_nameid_addr = il2cpp_symbols::get_method_pointer(
+			"UnityEngine.CoreModule.dll", "UnityEngine",
+			"Shader", "PropertyToID", 1
+		);
+
+		printf("shader_nameid_addr at %p\n", shader_nameid_addr);
+
+		MH_CreateHook((LPVOID)shader_nameid_addr, shader_nameid_hook, &shader_nameid_orig);
+		MH_EnableHook((LPVOID)shader_nameid_addr);
+		
 
 		auto set_antialiasing_addr = il2cpp_resolve_icall("UnityEngine.QualitySettings::set_antiAliasing(System.Int32)");
 
@@ -3976,6 +4200,8 @@ static bool show_info_window = false;
 static void* selected_obj = 0;
 static bool show_active_box = false;
 
+static flat_hash_map<void*, ObjectShaderInfo> ObjShaderDic;
+
 //从名称中获取类型名
 string getTypeName(string name) {
 	int left = name.rfind('(') + 1;
@@ -4022,7 +4248,7 @@ void refreashObject() {
 	ObjDic = {};
 	rootObjList = {};
 
-	//有新的获取Type的方式了，不过暂时保留
+	//有新的获取Type的方式了，不过暂时保留(refType?)
 	void* Component_type = type_hook((umastring*)il2cpp_symbols::get_string("UnityEngine.Component, UnityEngine"));
 
 
@@ -4470,7 +4696,7 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 							void* valueType = il2cpp_class_get_type(valueClass);
 							//printf("valueType is %p\n", valueType);
 							string valueTypeName = il2cpp_type_get_name(valueType);
-							//printf("valueTypeName is %s\n", valueTypeName.c_str());
+							
 							ObjectWindowInfo objInfo;
 							objInfo.obj = value;
 							objInfo._class = valueClass;
@@ -4482,6 +4708,17 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 								objInfo.name = "";
 							}
 							objInfo.typeName = valueTypeName;
+
+							/*
+							if (objInfo.typeName == "UnityEngine.Transform") {
+								printf("Here!\n");
+								void* gameObj = gameobject_hook(objInfo.obj);
+								printf("OK!\n");
+								string gameObjName = UmaGetString(objectname_hook(gameObj));
+								printf("gameObjName is %s\n", gameObjName.c_str());
+							}
+							*/
+
 							ObjWindowList.push_back(objInfo);
 						}
 						else {
@@ -4535,6 +4772,21 @@ void getProperty(void* obj, void* _class, int* index, vector<void*> new_properti
 	}
 }
 
+
+void* getObjProperty(void* obj, void* _class, vector<void*> new_properties, vector<string> propertyList, string propertyName) {
+	auto it = std::find(propertyList.begin(), propertyList.end(), propertyName);
+
+	if (it != propertyList.end()) {
+		int index = it - propertyList.begin();
+		void* pro = new_properties[index];
+
+		return property_hook(pro, obj);
+	}
+
+	return 0;
+}
+
+
 //创建FieldWindow
 void getFieldWindow(void* obj, void* _class, int i = 0) {
 	ImGuiTableFlags flags = 1;
@@ -4563,30 +4815,33 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 	ImGuiTableFlags flags = 1;
 
 	string componentProperty = to_string(int(obj)) + "_property_" + to_string(i);
+
+	if (ObjProDic[obj].type == 0) {
+		ObjProDic.erase(obj);
+	}
+
+	if (!ObjProDic.count(obj)) {
+		ObjectProInfo proInfo;
+		proInfo.type = objType_hook(obj);
+		void* tempProperties = typePros_hook(proInfo.type, 4 | 8 | 16 | 32);
+		proInfo.proLength = il2cpp_symbols::get_array_length(tempProperties);
+
+		vector<string> proNameList;
+		vector<void*> proList;
+		for (int i = 0; i < proInfo.proLength; i++) {
+			void* pro = arrayindex_hook(tempProperties, i);
+			proList.push_back(pro);
+			proNameList.push_back(UmaGetString((umastring*)property_hook(namePro, pro)));
+		}
+
+		proInfo.properties = proList;
+		proInfo.propertyNameList = proNameList;
+
+		ObjProDic[obj] = proInfo;
+	}
+
 	if (ImGui::TreeNode((componentProperty + "_tree").c_str(), "Property")) {
-		if (ObjProDic[obj].type == 0) {
-			ObjProDic.erase(obj);
-		}
-
-		if (!ObjProDic.count(obj)) {
-			ObjectProInfo proInfo;
-			proInfo.type = objType_hook(obj);
-			void* tempProperties = typePros_hook(proInfo.type, 4 | 8 | 16 | 32);
-			proInfo.proLength = il2cpp_symbols::get_array_length(tempProperties);
-
-			vector<string> proNameList;
-			vector<void*> proList;
-			for (int i = 0; i < proInfo.proLength; i++) {
-				void* pro = arrayindex_hook(tempProperties, i);
-				proList.push_back(pro);
-				proNameList.push_back(UmaGetString((umastring*)property_hook(namePro, pro)));
-			}
-
-			proInfo.properties = proList;
-			proInfo.propertyNameList = proNameList;
-
-			ObjProDic[obj] = proInfo;
-		}
+		
 
 
 
@@ -4615,6 +4870,110 @@ void getPropertyWindow(void* obj, void* _class, ObjectWindowInfo* objWindow = nu
 			ImGui::EndTable();
 		}
 
+		ImGui::TreePop();
+	}
+}
+
+//创建MaterialWindow
+void getShaderWindow(void* obj, void* _class, int i = 0) {
+	ImGuiTableFlags flags = 1;
+
+	//开始Material处理
+
+	string componentField = to_string(int(obj)) + "_shader_" + to_string(i);
+	if (ImGui::TreeNode((componentField + "_tree").c_str(), "Shader")) {
+
+		
+		if (ObjProDic.count(obj)) {
+			if (!ObjShaderDic.count(obj)) {
+
+				ObjectShaderInfo shaderInfo;
+
+				void* pro = getObjProperty(obj, _class, ObjProDic[obj].properties, ObjProDic[obj].propertyNameList, "shader");
+
+				shaderInfo.shader = pro;
+
+				vector<int> idSet;
+				flat_hash_map<int, string> idDic;
+
+				for (const auto& n : shader::ShaderTypeDic) {
+					int nameId = shader_nameid_hook((umastring*)il2cpp_symbols::get_string(n.first.c_str()));
+					bool isSet = has_shader_property_hook(obj, nameId);
+					if (isSet) {
+						idSet.push_back(nameId);
+						idDic[nameId] = n.first;
+					}
+				}
+
+				sort(idSet.begin(), idSet.end());
+				for (int i = 0; i < idSet.size(); i++) {
+					shaderInfo.propertyNameList.push_back(idDic[idSet[i]]);
+					shaderInfo.propertyNameIDList.push_back(idSet[i]);
+				}
+
+
+				for (int i = 0; i < shaderInfo.propertyNameList.size(); i++) {
+					printf("Here is Property Name: %s\n", shaderInfo.propertyNameList[i].c_str());
+				}
+
+				ObjShaderDic[obj] = shaderInfo;
+			}
+			
+
+			void* shaderObj = ObjShaderDic[obj].shader;
+
+			if (shaderObj != 0) {
+				auto shaderInfo = ObjShaderDic[obj];
+				string shaderName = UmaGetString(objectname_hook(shaderObj));
+				ImGui::Text("Shader Name: ");
+				ImGui::SameLine();
+				ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), shaderName.c_str());
+
+				if (ImGui::BeginTable((componentField + "_table").c_str(), 3, flags)) {
+					ImGui::TableSetupColumn("Property Name");
+					ImGui::TableSetupColumn("Property Type");
+					ImGui::TableSetupColumn("Property Value");
+					ImGui::TableHeadersRow();
+
+					for (int i = 0; i < shaderInfo.propertyNameList.size(); i++) {
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0);
+						ImGui::Text(shaderInfo.propertyNameList[i].c_str());
+						ImGui::TableSetColumnIndex(1);
+						ImGui::Text(shader::ShaderTypeDic[shaderInfo.propertyNameList[i]].c_str());
+						ImGui::TableSetColumnIndex(2);
+						if (shader::ShaderTypeDic[shaderInfo.propertyNameList[i]] == "Float") {
+							ImGui::Text(to_string(shader_get_float_hook(obj, shaderInfo.propertyNameIDList[i])).c_str());
+						}
+						else if (shader::ShaderTypeDic[shaderInfo.propertyNameList[i]] == "Color") {
+							Color tempColor;
+							shader_get_color_hook(obj, shaderInfo.propertyNameIDList[i], &tempColor);
+
+							float vector[] = { tempColor.r, tempColor.g, tempColor.b, tempColor.a};
+							string vectorName = "##Color_" + to_string((int)obj) + to_string(shaderInfo.propertyNameIDList[i]);
+							ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+
+							ImGui::SameLine();
+
+							ImVec4 color = ImVec4(tempColor.r, tempColor.g, tempColor.b, tempColor.a);
+							string colorLable = "##MyColor3_" + to_string((int)obj) + to_string(shaderInfo.propertyNameIDList[i]);
+							ImGui::ColorEdit3(colorLable.c_str(), (float*)&color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoPicker);
+						}
+						else if (shader::ShaderTypeDic[shaderInfo.propertyNameList[i]] == "Vector") {
+							Vector4 vectorGroup = shader_get_vector_hook(obj, shaderInfo.propertyNameIDList[i]);
+
+							float vector[] = { vectorGroup.x, vectorGroup.y, vectorGroup.z, vectorGroup.w };
+							string vectorName = "##Vector4_" + to_string((int)obj) + to_string(shaderInfo.propertyNameIDList[i]);
+							ImGui::InputFloat4(vectorName.c_str(), vector, "%.3f", ImGuiInputTextFlags_ReadOnly);
+						}
+					}
+					
+
+					ImGui::EndTable();
+				}
+			}
+		}
+		
 		ImGui::TreePop();
 	}
 }
@@ -4657,8 +5016,15 @@ void createObjWindows() {
 				ImGui::Text(("Object Name: " + objWindow->name).c_str());
 				ImGui::Text(("Object Type: " + objWindow->typeName).c_str());
 				//printf("%s\n", objWindow->name.c_str());
+
+				
+				if (objWindow->typeName == "UnityEngine.Material") {
+					getShaderWindow(objWindow->obj, objWindow->_class);
+				}
 				getFieldWindow(objWindow->obj, objWindow->_class);
 				getPropertyWindow(objWindow->obj, objWindow->_class, objWindow);
+				
+
 				ImGui::End();
 			}
 			else {
@@ -4672,6 +5038,9 @@ void createObjWindows() {
 			objWindowListSize -= 1;
 			if (ObjProDic.count(objWindow->obj)) {
 				ObjProDic.erase(objWindow->obj);
+			}
+			if (ObjShaderDic.count(objWindow->obj)) {
+				ObjShaderDic.erase(objWindow->obj);
 			}
 		}
 	}
@@ -5235,8 +5604,8 @@ int imguiwindow()
 
 
 					localPI_hook(selected_obj, V_pos, 1024);
-					localE_hook(selected_obj, V_rot, 1024);
-					localS_hook(selected_obj, V_scale, 1024);
+					localQI_hook(selected_obj, E2Q_hook(V_rot.x, V_rot.y, V_rot.z), 1024);
+					localSI_hook(selected_obj, V_scale, 1024);
 				}
 				else {
 					selectedMoveObj = nullptr;
