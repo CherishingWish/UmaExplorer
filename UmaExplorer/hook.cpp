@@ -1313,6 +1313,7 @@ namespace
 		return reinterpret_cast<decltype(set_antialiasing_hook)*>(set_antialiasing_orig)(g_antialiasing == -1 ? value : g_antialiasing);
 	}
 
+	/*
 	void* CharacterBuildInfo_ctor_0_orig;
 	void CharacterBuildInfo_ctor_0_hook(void* _this, int charaId, int dressId, int controllerType, int headId,
 		int zekken, int mobId, int backDancerColorId, bool isUseDressDataHeadModelSubId, int audienceId,
@@ -1339,6 +1340,7 @@ namespace
 		// printf("CharacterBuildInfo_ctor_1 cardId: %d, charaId: %d, dressId: %d, headId: %d\n", cardId, charaId, dressId, headId);
 		return reinterpret_cast<decltype(CharacterBuildInfo_ctor_1_hook)*>(CharacterBuildInfo_ctor_1_orig)(_this, cardId, charaId, dressId, controllerType, headId, zekken, mobId, backDancerColorId, overrideClothCategory, isUseDressDataHeadModelSubId, audienceId, motionDressId, isEnableModelCache);
 	}
+	*/
 
 
 	//
@@ -4053,6 +4055,7 @@ namespace
 		void* Global_ProInfo = reftype_hook(assembly, (umastring*)il2cpp_symbols::get_string("System.Reflection.PropertyInfo"));
 		namePro = typePro_hook(Global_ProInfo, il2cpp_symbols::get_string("Name"));
 
+		/*
 		const auto CharacterBuildInfo_ctor_0_addr =
 			il2cpp_symbols::get_method_pointer(
 				"umamusume.dll", "Gallop",
@@ -4066,6 +4069,7 @@ namespace
 				"CharacterBuildInfo", ".ctor", 13
 			);
 		ADD_HOOK(CharacterBuildInfo_ctor_1, "CharacterBuildInfo_ctor_1 at %p\n");
+		*/
 
 
 

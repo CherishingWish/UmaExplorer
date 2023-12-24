@@ -440,8 +440,8 @@ namespace shader {
 		{"_DirtTex", "2D"},
 		{"_DirtRate", ""},
 		{"_DitherTex", ""},
-		{"_UVEmissiveScroll", ""},
-		{"_UVEmissivePower", ""},
+		{"_UVEmissiveScroll", "Vector"},
+		{"_UVEmissivePower", "Float"},
 		{"_EyePupliScale", ""},
 		{"_ClipColor", ""},
 		{"_CheekRate", "Float"},
@@ -761,7 +761,9 @@ namespace shader {
 		{ "_EnvMap", "2D" },
 		{ "_EnvRate", "Float" },
 		{ "_EnvBias", "Float" },
-		{ "_DirtScale", "Float" }
+		{ "_DirtScale", "Float" },
+		{ "_UVEmissiveMaskTex", "2D" },
+		{ "_UVEmissiveRange", "Vector" }
 	};
 	
 }
